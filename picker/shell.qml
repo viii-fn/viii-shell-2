@@ -20,7 +20,7 @@ ShellRoot {
         { name: "black",   label: "Black",   accent: "#e4e4e4", bg: "#0a0a0a" },
         { name: "desert",  label: "Desert",  accent: "#e8b27a", bg: "#1b1510" },
         { name: "redcell", label: "Redcell", accent: "#ff6b70", bg: "#190a0b" },
-        { name: "wood",    label: "Wood",    accent: "#d19a5c", bg: "#16100a" }
+        { name: "wood",    label: "Wood",    accent: "#ffd23f", bg: "#17140a" }
     ]
 
     property int sel: 0
