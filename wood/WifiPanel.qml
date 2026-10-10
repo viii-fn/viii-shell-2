@@ -9,12 +9,12 @@ FloatingWindow {
     visible: false
     implicitWidth: 360
     implicitHeight: 480
-    color: "#d9121212"
+    color: Qt.rgba(22/255, 20/255, 16/255, 0.88)   // Warm dark yellow-tinted background with transparency
 
     readonly property color fg: "#e5e5e5"
-    readonly property color dim: "#888888"      // low signal / disabled
-    readonly property color accent: "#ffffff"   // high signal / enabled
-    readonly property color bad: "#ff5555"      // wrong password only
+    readonly property color dim: "#b0a088"      // low signal / disabled
+    readonly property color accent: "#ffd700"   // high signal / enabled (Yellow)
+    readonly property color bad: "#ffd700"      // wrong password only
 
     property bool badPassword: false
 
@@ -168,7 +168,7 @@ FloatingWindow {
                         width: 18; height: 18; radius: 9
                         y: 3
                         x: root.wifiOn ? 23 : 3
-                        color: "#121212"
+                        color: "#161410"
                         Behavior on x { NumberAnimation { duration: 120 } }
                     }
                     MouseArea {
@@ -188,7 +188,7 @@ FloatingWindow {
                 Layout.fillWidth: true
                 height: 44
                 radius: 10
-                color: "#1c1c1c"
+                color: "#3a351c"
                 border.width: 1
                 border.color: root.badPassword ? root.bad : root.accent
                 visible: root.pendingSsid !== ""
@@ -250,7 +250,7 @@ FloatingWindow {
                     width: list.width
                     height: 48
                     radius: 10
-                    color: hover.containsMouse ? "#262626" : "#1c1c1c"
+                    color: hover.containsMouse ? "#3a351c" : Qt.rgba(255, 255, 255, 0.04)
                     border.width: active ? 1 : 0
                     border.color: root.accent
 
