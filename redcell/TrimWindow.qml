@@ -15,7 +15,7 @@ FloatingWindow {
     title: "Trim"
     implicitWidth: 760
     implicitHeight: 540
-    color: "#d9121212"   // 85% opacity, same as the other panels
+    color: Qt.rgba(24/255, 16/255, 16/255, 0.85)   // Warm dark red-tinted background with 85% opacity
 
     // Closing with the titlebar X frees everything
     onVisibleChanged: if (!visible && panel) panel.closeWin()
@@ -31,7 +31,7 @@ FloatingWindow {
         }
         background: Rectangle {
             radius: 10
-            color: b.down ? "#3a3a3a" : "#262626"
+            color: b.down ? "#4a2222" : "#3a1c1c"
             border.color: "#888888"
             border.width: 1
             opacity: b.enabled ? 1 : 0.4
@@ -64,7 +64,7 @@ FloatingWindow {
             Layout.fillHeight: true
         }
 
-        // Seek slider; the green bar shows the selected start..end range
+        // Seek slider; the red bar shows the selected start..end range
         Slider {
             id: seek
             Layout.fillWidth: true
@@ -84,7 +84,7 @@ FloatingWindow {
                 Rectangle {
                     height: parent.height
                     radius: 4
-                    color: "#98fb98"
+                    color: "#ff5555"
                     x: player.duration > 0 ? parent.width * win.panel.startMs / player.duration : 0
                     width: player.duration > 0 ? parent.width * (win.panel.endMs - win.panel.startMs) / player.duration : 0
                 }
@@ -103,8 +103,8 @@ FloatingWindow {
             color: "#e5e5e5"
             text: win.panel.fmt(player.position) + " / " + win.panel.fmt(player.duration)
                   + "     start " + win.panel.fmt(win.panel.startMs)
-                  + "   end " + win.panel.fmt(win.panel.endMs)
-                  + "   length " + win.panel.fmt(Math.max(0, win.panel.endMs - win.panel.startMs))
+                  + "     end " + win.panel.fmt(win.panel.endMs)
+                  + "     length " + win.panel.fmt(Math.max(0, win.panel.endMs - win.panel.startMs))
         }
 
         RowLayout {
@@ -135,7 +135,7 @@ FloatingWindow {
         }
 
         Text {
-            color: "#98fb98"
+            color: "#ff5555"
             text: win.panel.status
             elide: Text.ElideMiddle
             Layout.fillWidth: true
