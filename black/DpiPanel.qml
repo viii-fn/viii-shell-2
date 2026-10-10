@@ -50,11 +50,11 @@ Scope {
         radius: 10
         color: area.containsMouse ? "#1e1e1e" : "transparent"
         border.width: 1
-        border.color: b.accent ? "#98fb98" : "#888888"
+        border.color: b.accent ? "#ffffff" : "#888888"
         Text {
             anchors.centerIn: parent
             text: b.label
-            color: b.accent ? "#98fb98" : "#e5e5e5"
+            color: b.accent ? "#ffffff" : "#e5e5e5"
             font.pixelSize: 18
         }
         MouseArea {
@@ -98,7 +98,7 @@ Scope {
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     text: Math.round(root.dpiScale * 100) + "%"
-                    color: "#98fb98"
+                    color: "#ffffff"
                     font.pixelSize: 34
                     font.bold: true
                 }
