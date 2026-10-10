@@ -217,7 +217,7 @@ PanelWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             font.family: win.iconFont; font.pixelSize: 18
                             // Pick one of 5 battery glyphs from the percentage.
-                            text: ["\uf240", "\uf243", "\uf242", "\uf241", "\uf240"][Math.min(4, Math.floor(win.pct / 25))]
+                            text: ["\uf244", "\uf243", "\uf242", "\uf241", "\uf240"][Math.min(4, Math.floor(win.pct / 25))]
                             color: win.charging ? win.green : (win.pct <= 15 ? win.crit : (win.pct <= 30 ? win.warn : win.fg))
                         }
                         Text {
