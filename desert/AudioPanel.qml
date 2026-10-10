@@ -61,7 +61,7 @@ Scope {
 
             Rectangle {
                 anchors.fill: parent
-                color: Qt.rgba(18/255, 18/255, 18/255, 0.85)   // match your foot alpha
+                color: Qt.rgba(30/255, 24/255, 21/255, 0.88)   // Warm dark brown background with transparency
 
                 ColumnLayout {
                     id: col
@@ -73,7 +73,7 @@ Scope {
 
                     Text {
                         text: "Output"
-                        color: "#e5e5e5"
+                        color: "#d7ccc8"
                         font.family: "monospace"
                         font.pixelSize: 13
                         opacity: 0.6
@@ -87,7 +87,7 @@ Scope {
                         Repeater {
                             model: [
                                 { label: "Speakers / headphones", profile: "output:analog-stereo+input:analog-stereo", hdmi: false },
-                                { label: "HDMI (TV)",            profile: "output:hdmi-stereo+input:analog-stereo",   hdmi: true }
+                                { label: "HDMI (TV)",             profile: "output:hdmi-stereo+input:analog-stereo",   hdmi: true }
                             ]
 
                             delegate: Rectangle {
@@ -98,16 +98,16 @@ Scope {
                                 Layout.fillWidth: true
                                 implicitHeight: 48
                                 radius: 6
-                                color: active ? Qt.rgba(152/255, 251/255, 152/255, 0.12)
-                                              : (btnHover.containsMouse ? Qt.rgba(1, 1, 1, 0.08)
-                                                                        : Qt.rgba(1, 1, 1, 0.04))
+                                color: active ? Qt.rgba(215/255, 204/255, 200/255, 0.15)
+                                              : (btnHover.containsMouse ? Qt.rgba(255, 255, 255, 0.08)
+                                                                        : Qt.rgba(255, 255, 255, 0.04))
                                 border.width: 1
-                                border.color: active ? "#98fb98" : "#888888"
+                                border.color: active ? "#d7ccc8" : "#8d6e63"
 
                                 Text {
                                     anchors.centerIn: parent
                                     text: btn.modelData.label
-                                    color: btn.active ? "#98fb98" : "#e5e5e5"
+                                    color: btn.active ? "#ffffff" : "#d7ccc8"
                                     font.family: "monospace"
                                     font.pixelSize: 13
                                 }
@@ -136,9 +136,9 @@ Scope {
                             Layout.fillWidth: true
                             implicitHeight: 40
                             radius: 6
-                            color: hover.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(1, 1, 1, 0.04)
+                            color: hover.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : Qt.rgba(255, 255, 255, 0.04)
                             border.width: 1
-                            border.color: active ? "#98fb98" : "#888888"
+                            border.color: active ? "#d7ccc8" : "#8d6e63"
 
                             RowLayout {
                                 anchors.fill: parent
@@ -148,15 +148,15 @@ Scope {
 
                                 Rectangle {
                                     width: 8; height: 8; radius: 4
-                                    color: row.active ? "#98fb98" : "transparent"
+                                    color: row.active ? "#d7ccc8" : "transparent"
                                     border.width: 1
-                                    border.color: row.active ? "#98fb98" : "#888888"
+                                    border.color: row.active ? "#d7ccc8" : "#8d6e63"
                                 }
 
                                 Text {
                                     Layout.fillWidth: true
                                     text: row.modelData.description || row.modelData.nickname || row.modelData.name
-                                    color: "#e5e5e5"
+                                    color: "#d7ccc8"
                                     elide: Text.ElideRight
                                     font.family: "monospace"
                                     font.pixelSize: 13
@@ -179,14 +179,14 @@ Scope {
                         Layout.topMargin: 6
                         implicitHeight: 8
                         radius: 4
-                        color: Qt.rgba(1, 1, 1, 0.1)
+                        color: Qt.rgba(255, 255, 255, 0.1)
                         visible: root.current !== null && root.current.audio !== null
 
                         Rectangle {
                             width: parent.width * Math.max(0, Math.min(1, root.current && root.current.audio ? root.current.audio.volume : 0))
                             height: parent.height
                             radius: 4
-                            color: root.current && root.current.audio && root.current.audio.muted ? "#888888" : "#98fb98"
+                            color: root.current && root.current.audio && root.current.audio.muted ? "#8d6e63" : "#d7ccc8"
                         }
 
                         MouseArea {
