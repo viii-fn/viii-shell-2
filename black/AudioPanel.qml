@@ -87,7 +87,7 @@ Scope {
                         Repeater {
                             model: [
                                 { label: "Speakers / headphones", profile: "output:analog-stereo+input:analog-stereo", hdmi: false },
-                                { label: "HDMI (TV)",            profile: "output:hdmi-stereo+input:analog-stereo",   hdmi: true }
+                                { label: "HDMI (TV)",             profile: "output:hdmi-stereo+input:analog-stereo",   hdmi: true }
                             ]
 
                             delegate: Rectangle {
@@ -98,16 +98,16 @@ Scope {
                                 Layout.fillWidth: true
                                 implicitHeight: 48
                                 radius: 6
-                                color: active ? Qt.rgba(152/255, 251/255, 152/255, 0.12)
+                                color: active ? Qt.rgba(1, 1, 1, 0.15)
                                               : (btnHover.containsMouse ? Qt.rgba(1, 1, 1, 0.08)
                                                                         : Qt.rgba(1, 1, 1, 0.04))
                                 border.width: 1
-                                border.color: active ? "#98fb98" : "#888888"
+                                border.color: active ? "#ffffff" : "#888888"
 
                                 Text {
                                     anchors.centerIn: parent
                                     text: btn.modelData.label
-                                    color: btn.active ? "#98fb98" : "#e5e5e5"
+                                    color: btn.active ? "#ffffff" : "#e5e5e5"
                                     font.family: "monospace"
                                     font.pixelSize: 13
                                 }
@@ -138,7 +138,7 @@ Scope {
                             radius: 6
                             color: hover.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(1, 1, 1, 0.04)
                             border.width: 1
-                            border.color: active ? "#98fb98" : "#888888"
+                            border.color: active ? "#ffffff" : "#888888"
 
                             RowLayout {
                                 anchors.fill: parent
@@ -148,9 +148,9 @@ Scope {
 
                                 Rectangle {
                                     width: 8; height: 8; radius: 4
-                                    color: row.active ? "#98fb98" : "transparent"
+                                    color: row.active ? "#ffffff" : "transparent"
                                     border.width: 1
-                                    border.color: row.active ? "#98fb98" : "#888888"
+                                    border.color: row.active ? "#ffffff" : "#888888"
                                 }
 
                                 Text {
@@ -186,7 +186,7 @@ Scope {
                             width: parent.width * Math.max(0, Math.min(1, root.current && root.current.audio ? root.current.audio.volume : 0))
                             height: parent.height
                             radius: 4
-                            color: root.current && root.current.audio && root.current.audio.muted ? "#888888" : "#98fb98"
+                            color: root.current && root.current.audio && root.current.audio.muted ? "#888888" : "#ffffff"
                         }
 
                         MouseArea {
