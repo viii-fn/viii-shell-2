@@ -13,7 +13,7 @@ FloatingWindow {
 
     readonly property color fg: "#e5e5e5"
     readonly property color dim: "#888888"      // low signal / disabled
-    readonly property color accent: "#ffffff"   // high signal / enabled
+    readonly property color accent: "#3b82f6"   // high signal / enabled (blue theme)
     readonly property color bad: "#ff5555"      // wrong password only
 
     property bool badPassword: false
@@ -274,8 +274,8 @@ FloatingWindow {
                                         anchors.bottom: parent.bottom
                                         radius: 1
                                         color: row.strength > parent.index * 25
-                                               ? (row.strength >= 50 ? root.accent : root.dim)
-                                               : "#333333"
+                                             ? (row.strength >= 50 ? root.accent : root.dim)
+                                             : "#333333"
                                     }
                                 }
                             }
