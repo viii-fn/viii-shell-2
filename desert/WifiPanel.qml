@@ -9,15 +9,14 @@ FloatingWindow {
     visible: false
     implicitWidth: 360
     implicitHeight: 480
-    color: "#d9121212"
+    color: Qt.rgba(30/255, 24/255, 21/255, 0.88)   // Warm dark brown background with transparency
 
-    readonly property color fg: "#e5e5e5"
-    readonly property color dim: "#888888"      // low signal / disabled
-    readonly property color accent: "#ffffff"   // high signal / enabled
-    readonly property color bad: "#ff5555"      // wrong password only
+    readonly property color fg: "#d7ccc8"
+    readonly property color dim: "#a1887f"      // low signal / disabled
+    readonly property color accent: "#d7ccc8"   // high signal / enabled
+    readonly property color bad: "#e57373"      // wrong password only
 
     property bool badPassword: false
-
     property bool wifiOn: true
     property string pendingSsid: ""   // network waiting for a password
     property string status: ""
@@ -59,7 +58,6 @@ FloatingWindow {
         // Connected network first, then strongest signal
         const rows = Object.values(byName)
         rows.sort((a, b) => (b.active - a.active) || (b.strength - a.strength))
-
         networks.clear()
         currentSsid = ""
         for (const r of rows) {
@@ -143,6 +141,7 @@ FloatingWindow {
             // Header: title, refresh, on/off switch
             RowLayout {
                 Layout.fillWidth: true
+
                 Text {
                     text: "Wi-Fi"
                     color: root.fg
@@ -150,6 +149,7 @@ FloatingWindow {
                     font.bold: true
                     Layout.fillWidth: true
                 }
+
                 Text {
                     text: "↻"
                     color: root.fg
@@ -161,16 +161,19 @@ FloatingWindow {
                         onClicked: root.refresh()
                     }
                 }
+
                 Rectangle {
                     width: 44; height: 24; radius: 12
                     color: root.wifiOn ? root.accent : root.dim
+
                     Rectangle {
                         width: 18; height: 18; radius: 9
                         y: 3
                         x: root.wifiOn ? 23 : 3
-                        color: "#121212"
+                        color: "#3e2723"
                         Behavior on x { NumberAnimation { duration: 120 } }
                     }
+
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
@@ -188,7 +191,7 @@ FloatingWindow {
                 Layout.fillWidth: true
                 height: 44
                 radius: 10
-                color: "#1c1c1c"
+                color: "#4e342e"
                 border.width: 1
                 border.color: root.badPassword ? root.bad : root.accent
                 visible: root.pendingSsid !== ""
@@ -203,6 +206,7 @@ FloatingWindow {
                     visible: pwField.text === ""
                     elide: Text.ElideRight
                 }
+
                 TextInput {
                     id: pwField
                     anchors.fill: parent
@@ -250,7 +254,7 @@ FloatingWindow {
                     width: list.width
                     height: 48
                     radius: 10
-                    color: hover.containsMouse ? "#262626" : "#1c1c1c"
+                    color: hover.containsMouse ? "#5d4037" : "#4e342e"
                     border.width: active ? 1 : 0
                     border.color: root.accent
 
@@ -275,7 +279,7 @@ FloatingWindow {
                                         radius: 1
                                         color: row.strength > parent.index * 25
                                                ? (row.strength >= 50 ? root.accent : root.dim)
-                                               : "#333333"
+                                               : "#3e2723"
                                     }
                                 }
                             }

@@ -15,24 +15,24 @@ FloatingWindow {
     title: "Trim"
     implicitWidth: 760
     implicitHeight: 540
-    color: "#d9121212"   // 85% opacity, same as the other panels
+    color: Qt.rgba(30/255, 24/255, 21/255, 0.85)   // Warm dark brown with 85% opacity
 
     // Closing with the titlebar X frees everything
     onVisibleChanged: if (!visible && panel) panel.closeWin()
 
-    // Styled button (radius 10, #888 border)
+    // Styled button (radius 10, #8d6e63 border)
     component TButton: Button {
         id: b
         contentItem: Text {
             text: b.text
-            color: "#e5e5e5"
+            color: "#d7ccc8"
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
         }
         background: Rectangle {
             radius: 10
-            color: b.down ? "#3a3a3a" : "#262626"
-            border.color: "#888888"
+            color: b.down ? "#6d4c41" : "#5d4037"
+            border.color: "#8d6e63"
             border.width: 1
             opacity: b.enabled ? 1 : 0.4
         }
@@ -64,7 +64,7 @@ FloatingWindow {
             Layout.fillHeight: true
         }
 
-        // Seek slider; the green bar shows the selected start..end range
+        // Seek slider; the warm cream bar shows the selected start..end range
         Slider {
             id: seek
             Layout.fillWidth: true
@@ -79,12 +79,12 @@ FloatingWindow {
                 width: seek.availableWidth
                 height: 8
                 radius: 4
-                color: "#333333"
+                color: "#4e342e"
 
                 Rectangle {
                     height: parent.height
                     radius: 4
-                    color: "#98fb98"
+                    color: "#d7ccc8"
                     x: player.duration > 0 ? parent.width * win.panel.startMs / player.duration : 0
                     width: player.duration > 0 ? parent.width * (win.panel.endMs - win.panel.startMs) / player.duration : 0
                 }
@@ -95,16 +95,16 @@ FloatingWindow {
                 width: 14
                 height: 14
                 radius: 7
-                color: "#e5e5e5"
+                color: "#d7ccc8"
             }
         }
 
         Text {
-            color: "#e5e5e5"
+            color: "#d7ccc8"
             text: win.panel.fmt(player.position) + " / " + win.panel.fmt(player.duration)
                   + "     start " + win.panel.fmt(win.panel.startMs)
-                  + "   end " + win.panel.fmt(win.panel.endMs)
-                  + "   length " + win.panel.fmt(Math.max(0, win.panel.endMs - win.panel.startMs))
+                  + "     end " + win.panel.fmt(win.panel.endMs)
+                  + "     length " + win.panel.fmt(Math.max(0, win.panel.endMs - win.panel.startMs))
         }
 
         RowLayout {
@@ -123,7 +123,7 @@ FloatingWindow {
                 onToggled: win.panel.exact = checked
                 contentItem: Text {
                     text: exactBox.text
-                    color: "#e5e5e5"
+                    color: "#d7ccc8"
                     leftPadding: exactBox.indicator.width + 6
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -135,7 +135,7 @@ FloatingWindow {
         }
 
         Text {
-            color: "#98fb98"
+            color: "#d7ccc8"
             text: win.panel.status
             elide: Text.ElideMiddle
             Layout.fillWidth: true
