@@ -15,7 +15,7 @@ Scope {
     readonly property var player: {
         const ps = Mpris.players.values
         if (ps.length === 0) return null
-        
+
         for (let i = 0; i < ps.length; i++) {
             if (ps[i].identity.toLowerCase().indexOf("spotify") >= 0) return ps[i]
         }
@@ -70,7 +70,7 @@ Scope {
     function fetchLyrics() {
         if (!parsedTitle) return
         if (lrc.running) { again = true; return }
-        
+
         let args = [
             "curl", "-s", "-G", "-A", "quickshell-player", "https://lrclib.net/api/search",
             "--data-urlencode", "track_name=" + parsedTitle
@@ -78,7 +78,7 @@ Scope {
         if (parsedArtist) {
             args.push("--data-urlencode", "artist_name=" + parsedArtist)
         }
-        
+
         lrc.command = args
         lrc.running = true
     }
@@ -138,13 +138,13 @@ Scope {
         width: 36; height: 36
         Rectangle {
             anchors.fill: parent; radius: width / 2
-            color: btn.filled ? "#e5e5e5" : (m.containsMouse ? "#262626" : "transparent")
+            color: btn.filled ? "#3b82f6" : (m.containsMouse ? "#262626" : "transparent")
         }
         Text {
             anchors.centerIn: parent
             text: btn.glyph
             font.family: "JetBrainsMono Nerd Font"; font.pixelSize: 15
-            color: btn.filled ? "#121212" : "#e5e5e5"
+            color: btn.filled ? "#ffffff" : "#e5e5e5"
         }
         MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; onClicked: btn.clicked() }
     }
@@ -177,7 +177,7 @@ Scope {
             radius: 24
             color: "#f2121212"
             border.width: 1
-            border.color: "#262626"
+            border.color: "#3b82f6"
 
             // Drag anywhere on empty card space; stays inside the screen
             MouseArea {
@@ -237,9 +237,9 @@ Scope {
                         Rectangle {
                             width: parent.width; height: 5; radius: 3; color: "#262626"
                             Rectangle {
-                                height: parent.height; radius: 3; color: "#e5e5e5"
+                                height: parent.height; radius: 3; color: "#3b82f6"
                                 width: (root.player && root.player.length > 0)
-                                       ? parent.width * Math.min(1, root.player.position / root.player.length) : 0
+                                     ? parent.width * Math.min(1, root.player.position / root.player.length) : 0
                             }
                             MouseArea {
                                 anchors.fill: parent; anchors.topMargin: -6; anchors.bottomMargin: -6
@@ -304,7 +304,7 @@ Scope {
                                 font.family: "JetBrainsMono Nerd Font"
                                 font.pixelSize: index === 2 ? 15 : 12
                                 font.weight: index === 2 ? Font.Bold : Font.Normal
-                                color: "#e5e5e5"
+                                color: index === 2 ? "#60a5fa" : "#e5e5e5"
                                 opacity: index === 2 ? 1 : (Math.abs(index - 2) === 1 ? 0.45 : 0.2)
                                 text: root.lineAt(root.idx + index - 2)
                             }

@@ -19,7 +19,7 @@ Scope {
     }
     property int maxDay: Math.max(1, ...days.map(x => x.secs))
     property int denom: Math.max(1, totalSecs)
-    readonly property var palette: ["#98fb98", "#7fd4ff", "#ffd479", "#ff9fb2", "#c3a6ff", "#ffb07a", "#e5e5e5", "#888888"]
+    readonly property var palette: ["#3b82f6", "#7fd4ff", "#ffd479", "#ff9fb2", "#c3a6ff", "#ffb07a", "#e5e5e5", "#888888"]
 
     function fmt(s) {
         const h = Math.floor(s / 3600)
@@ -102,11 +102,11 @@ Scope {
         height: 28
         color: "transparent"
         border.width: 1
-        border.color: t.active ? "#98fb98" : "#888888"
+        border.color: t.active ? "#3b82f6" : "#888888"
         Text {
             anchors.centerIn: parent
             text: t.label
-            color: t.active ? "#98fb98" : "#e5e5e5"
+            color: t.active ? "#60a5fa" : "#e5e5e5"
             font.pixelSize: 12
         }
         MouseArea {
@@ -152,7 +152,7 @@ Scope {
 
             Text {
                 text: root.fmt(Math.round(root.totalSecs * root.progress))
-                color: "#98fb98"
+                color: "#60a5fa"
                 font.pixelSize: 40
                 font.bold: true
             }
@@ -183,7 +183,7 @@ Scope {
                                 anchors.top: parent.top
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: root.fmt(Math.round(modelData.secs * col.local))
-                                color: col.isToday ? "#98fb98" : "#e5e5e5"
+                                color: col.isToday ? "#60a5fa" : "#e5e5e5"
                                 font.pixelSize: 10
                                 opacity: (col.isToday || root.hoverIdx === index) ? 1 : 0
                                 Behavior on opacity { NumberAnimation { duration: 120 } }
@@ -206,7 +206,7 @@ Scope {
                                         ? track.height * Math.max(0.05, modelData.secs / root.maxDay) * col.local
                                         : 0
                                     radius: Math.min(5, height / 2)
-                                    color: col.isToday ? "#98fb98" : "#888888"
+                                    color: col.isToday ? "#3b82f6" : "#888888"
                                 }
                             }
 
