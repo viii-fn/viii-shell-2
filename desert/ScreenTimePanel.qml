@@ -19,7 +19,9 @@ Scope {
     }
     property int maxDay: Math.max(1, ...days.map(x => x.secs))
     property int denom: Math.max(1, totalSecs)
-    readonly property var palette: ["#98fb98", "#7fd4ff", "#ffd479", "#ff9fb2", "#c3a6ff", "#ffb07a", "#e5e5e5", "#888888"]
+
+    // Warm earthy / coffee tones palette
+    readonly property var palette: ["#d7ccc8", "#bcaaa4", "#a1887f", "#8d6e63", "#795548", "#6d4c41", "#e5e5e5", "#888888"]
 
     function fmt(s) {
         const h = Math.floor(s / 3600)
@@ -100,13 +102,13 @@ Scope {
         radius: 10
         width: 74
         height: 28
-        color: "transparent"
+        color: t.active ? Qt.rgba(215/255, 204/255, 200/255, 0.15) : "transparent"
         border.width: 1
-        border.color: t.active ? "#98fb98" : "#888888"
+        border.color: t.active ? "#d7ccc8" : "#8d6e63"
         Text {
             anchors.centerIn: parent
             text: t.label
-            color: t.active ? "#98fb98" : "#e5e5e5"
+            color: t.active ? "#ffffff" : "#d7ccc8"
             font.pixelSize: 12
         }
         MouseArea {
@@ -122,7 +124,7 @@ Scope {
         title: "Screen Time"
         implicitWidth: 440
         implicitHeight: 640
-        color: "#d9121212"
+        color: Qt.rgba(30/255, 24/255, 21/255, 0.88)   // Warm dark brown background with transparency
         onVisibleChanged: if (!visible) anim.stop()
 
         Column {
@@ -137,7 +139,7 @@ Scope {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "SCREEN TIME"
-                    color: "#888888"
+                    color: "#a1887f"
                     font.pixelSize: 11
                     font.letterSpacing: 2
                 }
@@ -152,7 +154,7 @@ Scope {
 
             Text {
                 text: root.fmt(Math.round(root.totalSecs * root.progress))
-                color: "#98fb98"
+                color: "#d7ccc8"
                 font.pixelSize: 40
                 font.bold: true
             }
@@ -183,7 +185,7 @@ Scope {
                                 anchors.top: parent.top
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: root.fmt(Math.round(modelData.secs * col.local))
-                                color: col.isToday ? "#98fb98" : "#e5e5e5"
+                                color: col.isToday ? "#ffffff" : "#d7ccc8"
                                 font.pixelSize: 10
                                 opacity: (col.isToday || root.hoverIdx === index) ? 1 : 0
                                 Behavior on opacity { NumberAnimation { duration: 120 } }
@@ -197,7 +199,7 @@ Scope {
                                 width: 10
                                 height: 92
                                 radius: 5
-                                color: Qt.rgba(1, 1, 1, 0.06)
+                                color: Qt.rgba(255, 255, 255, 0.06)
 
                                 Rectangle {
                                     anchors.bottom: parent.bottom
@@ -206,7 +208,7 @@ Scope {
                                         ? track.height * Math.max(0.05, modelData.secs / root.maxDay) * col.local
                                         : 0
                                     radius: Math.min(5, height / 2)
-                                    color: col.isToday ? "#98fb98" : "#888888"
+                                    color: col.isToday ? "#d7ccc8" : "#8d6e63"
                                 }
                             }
 
@@ -214,7 +216,7 @@ Scope {
                                 anchors.bottom: parent.bottom
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.label
-                                color: "#888888"
+                                color: "#a1887f"
                                 font.pixelSize: 11
                             }
 
@@ -229,11 +231,11 @@ Scope {
                 }
             }
 
-            Rectangle { width: parent.width; height: 1; color: "#888888"; opacity: 0.4 }
+            Rectangle { width: parent.width; height: 1; color: "#8d6e63"; opacity: 0.4 }
 
             Text {
                 text: "MOST USED"
-                color: "#888888"
+                color: "#a1887f"
                 font.pixelSize: 11
                 font.letterSpacing: 2
             }
@@ -241,7 +243,7 @@ Scope {
             Text {
                 visible: root.apps.length === 0
                 text: "No data yet. The tracker logs once a minute."
-                color: "#888888"
+                color: "#a1887f"
                 font.pixelSize: 13
             }
 
@@ -254,7 +256,7 @@ Scope {
                 Rectangle {
                     anchors.fill: parent
                     radius: 5
-                    color: Qt.rgba(1, 1, 1, 0.06)
+                    color: Qt.rgba(255, 255, 255, 0.06)
                 }
 
                 Row {
@@ -304,7 +306,7 @@ Scope {
                             anchors.leftMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.pretty(modelData.name)
-                            color: "#e5e5e5"
+                            color: "#d7ccc8"
                             font.pixelSize: 14
                         }
                         Text {
@@ -314,7 +316,7 @@ Scope {
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.fmt(Math.round(modelData.secs * row.local))
-                            color: "#e5e5e5"
+                            color: "#d7ccc8"
                             font.pixelSize: 14
                         }
                         Text {
@@ -324,7 +326,7 @@ Scope {
                             anchors.rightMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
                             text: Math.round(modelData.secs / root.denom * 100 * row.local) + "%"
-                            color: "#888888"
+                            color: "#a1887f"
                             font.pixelSize: 12
                         }
                     }
