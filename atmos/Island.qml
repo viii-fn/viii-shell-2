@@ -1,7 +1,7 @@
 // File: ~/.config/quickshell/Island.qml
 
 import Quickshell
-import Quickshell.Io                 // Process: run shell commands
+import Quickshell.Io                // Process: run shell commands
 import Quickshell.Wayland            // ToplevelManager: list of open windows
 import Quickshell.Widgets            // ClippingRectangle: crops album art into a circle
 import Quickshell.Services.Mpris     // music players
@@ -15,7 +15,7 @@ PanelWindow {
     anchors.top: true                // top only = centered horizontally
     WlrLayershell.layer: WlrLayer.Top
     margins.top: 0                   // flush with the screen edge (the notch)
-    implicitWidth: 1200               // room for the notch to grow into
+    implicitWidth: 1200              // room for the notch to grow into
     implicitHeight: 44
     color: "transparent"
 
@@ -23,11 +23,11 @@ PanelWindow {
     mask: Region { item: island }
 
     // --- Theme (from your Waybar style.css) -----------------------------
-    readonly property color bg: "#eb121212"        // rgba(18,18,18,0.92)
-    readonly property color chip: "#262626"        // borders + active-window highlight
+    readonly property color bg: "#eb121212"         // rgba(18,18,18,0.92)
+    readonly property color chip: "#262626"         // borders + active-window highlight
     readonly property color fg: "#e5e5e5"
     readonly property color dim: "#a3a3a3"
-    readonly property color green: "#98fb98"       // charging
+    readonly property color green: "#3b82f6"         // charging (swapped to blue theme)
     readonly property color warn: "#f4a460"
     readonly property color crit: "#cd5c5c"
     readonly property string iconFont: "JetBrainsMono Nerd Font"
@@ -146,32 +146,32 @@ PanelWindow {
         // rounded bottom corners.
         Shape {
             anchors.fill: parent
-            preferredRendererType: Shape.CurveRenderer     // smooth edges
+            preferredRendererType: Shape.CurveRenderer      // smooth edges
             ShapePath {
                 fillColor: win.bg
                 strokeColor: win.chip
                 strokeWidth: 0
                 startX: 0; startY: 0
 
-                PathLine { x: island.width; y: 0 }                                   // top edge
-                PathQuad {                                                           // right flare
+                PathLine { x: island.width; y: 0 }                                    // top edge
+                PathQuad {                                                            // right flare
                     x: island.width - win.flare; y: win.flare
                     controlX: island.width - win.flare; controlY: 0
                 }
                 PathLine { x: island.width - win.flare; y: island.height - win.corner }   // right side
-                PathArc {                                                            // bottom-right corner
+                PathArc {                                                             // bottom-right corner
                     x: island.width - win.flare - win.corner; y: island.height
                     radiusX: win.corner; radiusY: win.corner
                     direction: PathArc.Clockwise
                 }
-                PathLine { x: win.flare + win.corner; y: island.height }             // bottom edge
-                PathArc {                                                            // bottom-left corner
+                PathLine { x: win.flare + win.corner; y: island.height }              // bottom edge
+                PathArc {                                                             // bottom-left corner
                     x: win.flare; y: island.height - win.corner
                     radiusX: win.corner; radiusY: win.corner
                     direction: PathArc.Clockwise
                 }
-                PathLine { x: win.flare; y: win.flare }                              // left side
-                PathQuad {                                                           // left flare
+                PathLine { x: win.flare; y: win.flare }                                // left side
+                PathQuad {                                                            // left flare
                     x: 0; y: 0
                     controlX: win.flare; controlY: 0
                 }
@@ -206,7 +206,7 @@ PanelWindow {
                     }
                 }
 
-                // 2. BATTERY (green + bolt while charging)
+                // 2. BATTERY (blue + bolt while charging)
                 Item {
                     id: batSec
                     readonly property real target: win.gap + batRow.implicitWidth
@@ -318,7 +318,7 @@ PanelWindow {
                         ClippingRectangle {
                             width: 30; height: 30; radius: 15
                             anchors.verticalCenter: parent.verticalCenter
-                            color: win.chip                  // shows when there's no art
+                            color: win.chip              // shows when there's no art
                             Text {
                                 anchors.centerIn: parent
                                 text: "♪"; color: win.dim; font.pixelSize: 14
@@ -389,7 +389,7 @@ PanelWindow {
                             Repeater {
                                 model: ToplevelManager.toplevels
                                 delegate: Item {
-                                    required property var modelData     // the window this copy represents
+                                    required property var modelData      // the window this copy represents
                                     width: 30; height: 30
 
                                     Rectangle {
