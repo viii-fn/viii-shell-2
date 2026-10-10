@@ -48,13 +48,13 @@ Scope {
         property bool accent: false
         signal clicked()
         radius: 10
-        color: area.containsMouse ? "#1e1e1e" : "transparent"
+        color: area.containsMouse ? "#3a351c" : "transparent"
         border.width: 1
-        border.color: b.accent ? "#98fb98" : "#888888"
+        border.color: b.accent ? "#ffd700" : "#888888"
         Text {
             anchors.centerIn: parent
             text: b.label
-            color: b.accent ? "#98fb98" : "#e5e5e5"
+            color: b.accent ? "#ffd700" : "#e5e5e5"
             font.pixelSize: 18
         }
         MouseArea {
@@ -70,7 +70,7 @@ Scope {
         title: "Display Scale"
         implicitWidth: 340
         implicitHeight: 250
-        color: "#d9121212"
+        color: Qt.rgba(22/255, 20/255, 16/255, 0.88)   // Warm dark yellow-tinted background with transparency
         id: win
         visible: false
 
@@ -98,7 +98,7 @@ Scope {
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     text: Math.round(root.dpiScale * 100) + "%"
-                    color: "#98fb98"
+                    color: "#ffd700"
                     font.pixelSize: 34
                     font.bold: true
                 }
