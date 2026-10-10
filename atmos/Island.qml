@@ -1,13 +1,13 @@
 // File: ~/.config/quickshell/Island.qml
 
 import Quickshell
-import Quickshell.Io                // Process: run shell commands
-import Quickshell.Wayland            // ToplevelManager: list of open windows
-import Quickshell.Widgets            // ClippingRectangle: crops album art into a circle
-import Quickshell.Services.Mpris     // music players
-import Quickshell.Services.UPower    // battery + charging state
+import Quickshell.Io                 // Process: run shell commands
+import Quickshell.Wayland             // ToplevelManager: list of open windows
+import Quickshell.Widgets             // ClippingRectangle: crops album art into a circle
+import Quickshell.Services.Mpris      // music players
+import Quickshell.Services.UPower     // battery + charging state
 import QtQuick
-import QtQuick.Shapes                // Shape: lets us draw the notch outline
+import QtQuick.Shapes                 // Shape: lets us draw the notch outline
 
 PanelWindow {
     id: win
@@ -22,14 +22,14 @@ PanelWindow {
     // Only the notch catches clicks; the transparent rest lets clicks through.
     mask: Region { item: island }
 
-    // --- Theme (from your Waybar style.css) -----------------------------
-    readonly property color bg: "#eb121212"         // rgba(18,18,18,0.92)
-    readonly property color chip: "#262626"         // borders + active-window highlight
+    // --- Theme (Blue) -----------------------------------------------------
+    readonly property color bg: Qt.rgba(16/255, 20/255, 28/255, 0.92)         // Warm dark blue background
+    readonly property color chip: "#1c243a"         // borders + active-window highlight
     readonly property color fg: "#e5e5e5"
-    readonly property color dim: "#a3a3a3"
-    readonly property color green: "#3b82f6"         // charging (swapped to blue theme)
-    readonly property color warn: "#f4a460"
-    readonly property color crit: "#cd5c5c"
+    readonly property color dim: "#8892b0"
+    readonly property color green: "#3b82f6"       // charging (blue accent)
+    readonly property color warn: "#60a5fa"
+    readonly property color crit: "#3b82f6"
     readonly property string iconFont: "JetBrainsMono Nerd Font"
     readonly property string textFont: "JetBrainsMono Nerd Font"
 
@@ -83,7 +83,6 @@ PanelWindow {
     }
 
     // A small button used by the music controls.
-    // (Colors are written out here because inline components can't see the ids above.)
     component CtlButton: Item {
         id: btn
         property string glyph: ""
@@ -95,14 +94,14 @@ PanelWindow {
         Rectangle {
             anchors.fill: parent
             radius: width / 2
-            color: btn.filled ? "#e5e5e5" : (hover.containsMouse ? "#262626" : "transparent")
+            color: btn.filled ? "#3b82f6" : (hover.containsMouse ? "#1c243a" : "transparent")
         }
         Text {
             anchors.centerIn: parent
             text: btn.glyph
             font.family: "JetBrainsMono Nerd Font"
             font.pixelSize: btn.glyphSize
-            color: btn.filled ? "#121212" : "#e5e5e5"
+            color: btn.filled ? "#10141c" : "#e5e5e5"
         }
         MouseArea {
             id: hover
@@ -141,9 +140,6 @@ PanelWindow {
         }
 
         // The outline. It starts at the top-left corner and walks clockwise.
-        // PathQuad draws the curved flare at the top corners, which is what makes
-        // the notch look like it grows out of the screen edge. PathArc draws the
-        // rounded bottom corners.
         Shape {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer      // smooth edges
@@ -206,7 +202,7 @@ PanelWindow {
                     }
                 }
 
-                // 2. BATTERY (blue + bolt while charging)
+                // 2. BATTERY
                 Item {
                     id: batSec
                     readonly property real target: win.gap + batRow.implicitWidth
@@ -283,7 +279,6 @@ PanelWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             font.family: win.textFont; font.pixelSize: 13; font.weight: Font.DemiBold
                             color: win.fg
-                            // Qt.formatDateTime works like C#'s DateTime.ToString(format).
                             text: win.showDate ? Qt.formatDateTime(clock.date, "ddd, MMM d")
                                                : Qt.formatDateTime(clock.date, "HH:mm")
                         }
@@ -407,7 +402,6 @@ PanelWindow {
                                     MouseArea {
                                         anchors.fill: parent
                                         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                                        // "mouse => ..." is a lambda: it receives the click event as "mouse".
                                         onClicked: mouse => {
                                             if (mouse.button === Qt.MiddleButton) modelData.close()
                                             else modelData.activate()

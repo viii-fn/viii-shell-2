@@ -48,7 +48,7 @@ Scope {
         property bool accent: false
         signal clicked()
         radius: 10
-        color: area.containsMouse ? "#1e1e1e" : "transparent"
+        color: area.containsMouse ? "#1c243a" : "transparent"
         border.width: 1
         border.color: b.accent ? "#3b82f6" : "#888888"
         Text {
@@ -70,7 +70,7 @@ Scope {
         title: "Display Scale"
         implicitWidth: 340
         implicitHeight: 250
-        color: "#d9121212"
+        color: Qt.rgba(16/255, 20/255, 28/255, 0.88)   // Warm dark blue-tinted background with transparency
         id: win
         visible: false
 

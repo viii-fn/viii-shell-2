@@ -138,13 +138,13 @@ Scope {
         width: 36; height: 36
         Rectangle {
             anchors.fill: parent; radius: width / 2
-            color: btn.filled ? "#3b82f6" : (m.containsMouse ? "#262626" : "transparent")
+            color: btn.filled ? "#3b82f6" : (m.containsMouse ? "#1c243a" : "transparent")
         }
         Text {
             anchors.centerIn: parent
             text: btn.glyph
             font.family: "JetBrainsMono Nerd Font"; font.pixelSize: 15
-            color: btn.filled ? "#ffffff" : "#e5e5e5"
+            color: btn.filled ? "#10141c" : "#e5e5e5"
         }
         MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; onClicked: btn.clicked() }
     }
@@ -175,7 +175,7 @@ Scope {
             width: 580
             height: Math.max(leftCol.implicitHeight, lyricsBox.implicitHeight) + 32
             radius: 24
-            color: "#f2121212"
+            color: Qt.rgba(16/255, 20/255, 28/255, 0.92)   // Warm dark blue window background with transparency
             border.width: 1
             border.color: "#3b82f6"
 
@@ -203,8 +203,8 @@ Scope {
 
                     ClippingRectangle {
                         width: parent.width; height: parent.width; radius: 16
-                        color: "#262626"
-                        Text { anchors.centerIn: parent; text: "♪"; font.pixelSize: 48; color: "#a3a3a3"; visible: art.status !== Image.Ready }
+                        color: "#1c243a"
+                        Text { anchors.centerIn: parent; text: "♪"; font.pixelSize: 48; color: "#8892b0"; visible: art.status !== Image.Ready }
                         Image {
                             id: art
                             anchors.fill: parent
@@ -225,7 +225,7 @@ Scope {
                         Text {
                             width: parent.width; elide: Text.ElideRight
                             font.family: "JetBrainsMono Nerd Font"; font.pixelSize: 11
-                            color: "#a3a3a3"
+                            color: "#8892b0"
                             text: root.parsedArtist
                         }
                     }
@@ -235,7 +235,7 @@ Scope {
                         width: parent.width
                         spacing: 4
                         Rectangle {
-                            width: parent.width; height: 5; radius: 3; color: "#262626"
+                            width: parent.width; height: 5; radius: 3; color: "#1c243a"
                             Rectangle {
                                 height: parent.height; radius: 3; color: "#3b82f6"
                                 width: (root.player && root.player.length > 0)
@@ -251,9 +251,9 @@ Scope {
                         }
                         Item {
                             width: parent.width; height: 12
-                            Text { anchors.left: parent.left; font.pixelSize: 10; color: "#a3a3a3"
+                            Text { anchors.left: parent.left; font.pixelSize: 10; color: "#8892b0"
                                    text: root.player ? root.fmt(root.player.position) : "0:00" }
-                            Text { anchors.right: parent.right; font.pixelSize: 10; color: "#a3a3a3"
+                            Text { anchors.right: parent.right; font.pixelSize: 10; color: "#8892b0"
                                    text: root.player ? root.fmt(root.player.length) : "0:00" }
                         }
                     }
@@ -283,7 +283,7 @@ Scope {
                         anchors.centerIn: parent
                         visible: root.lines.length === 0
                         text: root.status
-                        color: "#a3a3a3"; font.pixelSize: 12
+                        color: "#8892b0"; font.pixelSize: 12
                     }
 
                     Column {

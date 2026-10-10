@@ -122,7 +122,7 @@ Scope {
         title: "Screen Time"
         implicitWidth: 440
         implicitHeight: 640
-        color: "#d9121212"
+        color: Qt.rgba(16/255, 20/255, 28/255, 0.88)   // Warm dark blue-tinted background with transparency
         onVisibleChanged: if (!visible) anim.stop()
 
         Column {
@@ -197,7 +197,7 @@ Scope {
                                 width: 10
                                 height: 92
                                 radius: 5
-                                color: Qt.rgba(1, 1, 1, 0.06)
+                                color: Qt.rgba(255, 255, 255, 0.06)
 
                                 Rectangle {
                                     anchors.bottom: parent.bottom
@@ -254,7 +254,7 @@ Scope {
                 Rectangle {
                     anchors.fill: parent
                     radius: 5
-                    color: Qt.rgba(1, 1, 1, 0.06)
+                    color: Qt.rgba(255, 255, 255, 0.06)
                 }
 
                 Row {

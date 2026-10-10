@@ -9,10 +9,10 @@ FloatingWindow {
     visible: false
     implicitWidth: 360
     implicitHeight: 480
-    color: "#d9121212"
+    color: Qt.rgba(16/255, 20/255, 28/255, 0.88)   // Warm dark blue-tinted background with transparency
 
     readonly property color fg: "#e5e5e5"
-    readonly property color dim: "#888888"      // low signal / disabled
+    readonly property color dim: "#8892b0"      // low signal / disabled
     readonly property color accent: "#3b82f6"   // high signal / enabled (blue theme)
     readonly property color bad: "#ff5555"      // wrong password only
 
@@ -168,7 +168,7 @@ FloatingWindow {
                         width: 18; height: 18; radius: 9
                         y: 3
                         x: root.wifiOn ? 23 : 3
-                        color: "#121212"
+                        color: "#162032"
                         Behavior on x { NumberAnimation { duration: 120 } }
                     }
                     MouseArea {
@@ -188,7 +188,7 @@ FloatingWindow {
                 Layout.fillWidth: true
                 height: 44
                 radius: 10
-                color: "#1c1c1c"
+                color: "#1c243a"
                 border.width: 1
                 border.color: root.badPassword ? root.bad : root.accent
                 visible: root.pendingSsid !== ""
@@ -250,7 +250,7 @@ FloatingWindow {
                     width: list.width
                     height: 48
                     radius: 10
-                    color: hover.containsMouse ? "#262626" : "#1c1c1c"
+                    color: hover.containsMouse ? "#1c243a" : Qt.rgba(255, 255, 255, 0.04)
                     border.width: active ? 1 : 0
                     border.color: root.accent
 
@@ -274,8 +274,8 @@ FloatingWindow {
                                         anchors.bottom: parent.bottom
                                         radius: 1
                                         color: row.strength > parent.index * 25
-                                             ? (row.strength >= 50 ? root.accent : root.dim)
-                                             : "#333333"
+                                               ? (row.strength >= 50 ? root.accent : root.dim)
+                                               : "#333333"
                                     }
                                 }
                             }

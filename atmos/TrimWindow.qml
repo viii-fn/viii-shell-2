@@ -15,7 +15,7 @@ FloatingWindow {
     title: "Trim"
     implicitWidth: 760
     implicitHeight: 540
-    color: "#d9121212"   // 85% opacity, same as the other panels
+    color: Qt.rgba(16/255, 20/255, 28/255, 0.85)   // Warm dark blue-tinted background with transparency
 
     // Closing with the titlebar X frees everything
     onVisibleChanged: if (!visible && panel) panel.closeWin()
@@ -31,7 +31,7 @@ FloatingWindow {
         }
         background: Rectangle {
             radius: 10
-            color: b.down ? "#3a3a3a" : "#262626"
+            color: b.down ? "#1c243a" : "#262626"
             border.color: "#888888"
             border.width: 1
             opacity: b.enabled ? 1 : 0.4
@@ -102,9 +102,9 @@ FloatingWindow {
         Text {
             color: "#e5e5e5"
             text: win.panel.fmt(player.position) + " / " + win.panel.fmt(player.duration)
-                  + "      start " + win.panel.fmt(win.panel.startMs)
-                  + "    end " + win.panel.fmt(win.panel.endMs)
-                  + "    length " + win.panel.fmt(Math.max(0, win.panel.endMs - win.panel.startMs))
+                  + "     start " + win.panel.fmt(win.panel.startMs)
+                  + "   end " + win.panel.fmt(win.panel.endMs)
+                  + "   length " + win.panel.fmt(Math.max(0, win.panel.endMs - win.panel.startMs))
         }
 
         RowLayout {

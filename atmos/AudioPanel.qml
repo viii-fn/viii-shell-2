@@ -61,7 +61,7 @@ Scope {
 
             Rectangle {
                 anchors.fill: parent
-                color: Qt.rgba(18/255, 18/255, 18/255, 0.85)   // match your foot alpha
+                color: Qt.rgba(16/255, 20/255, 28/255, 0.88)   // Warm dark blue-tinted background with transparency
 
                 ColumnLayout {
                     id: col
@@ -99,8 +99,8 @@ Scope {
                                 implicitHeight: 48
                                 radius: 6
                                 color: active ? Qt.rgba(59/255, 130/255, 246/255, 0.15)
-                                              : (btnHover.containsMouse ? Qt.rgba(1, 1, 1, 0.08)
-                                                                        : Qt.rgba(1, 1, 1, 0.04))
+                                              : (btnHover.containsMouse ? Qt.rgba(255, 255, 255, 0.08)
+                                                                        : Qt.rgba(255, 255, 255, 0.04))
                                 border.width: 1
                                 border.color: active ? "#3b82f6" : "#888888"
 
@@ -136,7 +136,7 @@ Scope {
                             Layout.fillWidth: true
                             implicitHeight: 40
                             radius: 6
-                            color: hover.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(1, 1, 1, 0.04)
+                            color: hover.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : Qt.rgba(255, 255, 255, 0.04)
                             border.width: 1
                             border.color: active ? "#3b82f6" : "#888888"
 
@@ -179,7 +179,7 @@ Scope {
                         Layout.topMargin: 6
                         implicitHeight: 8
                         radius: 4
-                        color: Qt.rgba(1, 1, 1, 0.1)
+                        color: Qt.rgba(255, 255, 255, 0.1)
                         visible: root.current !== null && root.current.audio !== null
 
                         Rectangle {
