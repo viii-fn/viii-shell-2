@@ -15,7 +15,7 @@ Scope {
     readonly property var player: {
         const ps = Mpris.players.values
         if (ps.length === 0) return null
-        
+
         for (let i = 0; i < ps.length; i++) {
             if (ps[i].identity.toLowerCase().indexOf("spotify") >= 0) return ps[i]
         }
@@ -70,7 +70,7 @@ Scope {
     function fetchLyrics() {
         if (!parsedTitle) return
         if (lrc.running) { again = true; return }
-        
+
         let args = [
             "curl", "-s", "-G", "-A", "quickshell-player", "https://lrclib.net/api/search",
             "--data-urlencode", "track_name=" + parsedTitle
@@ -78,7 +78,7 @@ Scope {
         if (parsedArtist) {
             args.push("--data-urlencode", "artist_name=" + parsedArtist)
         }
-        
+
         lrc.command = args
         lrc.running = true
     }
@@ -138,7 +138,7 @@ Scope {
         width: 36; height: 36
         Rectangle {
             anchors.fill: parent; radius: width / 2
-            color: btn.filled ? "#e5e5e5" : (m.containsMouse ? "#262626" : "transparent")
+            color: btn.filled ? "#ffffff" : (m.containsMouse ? "#333333" : "transparent")
         }
         Text {
             anchors.centerIn: parent
@@ -177,7 +177,7 @@ Scope {
             radius: 24
             color: "#f2121212"
             border.width: 1
-            border.color: "#262626"
+            border.color: "#444444"
 
             // Drag anywhere on empty card space; stays inside the screen
             MouseArea {
@@ -204,7 +204,7 @@ Scope {
                     ClippingRectangle {
                         width: parent.width; height: parent.width; radius: 16
                         color: "#262626"
-                        Text { anchors.centerIn: parent; text: "♪"; font.pixelSize: 48; color: "#a3a3a3"; visible: art.status !== Image.Ready }
+                        Text { anchors.centerIn: parent; text: "♪"; font.pixelSize: 48; color: "#777777"; visible: art.status !== Image.Ready }
                         Image {
                             id: art
                             anchors.fill: parent
@@ -219,13 +219,13 @@ Scope {
                         Text {
                             width: parent.width; elide: Text.ElideRight
                             font.family: "JetBrainsMono Nerd Font"; font.pixelSize: 14; font.weight: Font.Bold
-                            color: "#e5e5e5"
+                            color: "#ffffff"
                             text: root.parsedTitle !== "" ? root.parsedTitle : "Nothing playing"
                         }
                         Text {
                             width: parent.width; elide: Text.ElideRight
                             font.family: "JetBrainsMono Nerd Font"; font.pixelSize: 11
-                            color: "#a3a3a3"
+                            color: "#999999"
                             text: root.parsedArtist
                         }
                     }
@@ -235,11 +235,11 @@ Scope {
                         width: parent.width
                         spacing: 4
                         Rectangle {
-                            width: parent.width; height: 5; radius: 3; color: "#262626"
+                            width: parent.width; height: 5; radius: 3; color: "#2a2a2a"
                             Rectangle {
-                                height: parent.height; radius: 3; color: "#e5e5e5"
+                                height: parent.height; radius: 3; color: "#cccccc"
                                 width: (root.player && root.player.length > 0)
-                                       ? parent.width * Math.min(1, root.player.position / root.player.length) : 0
+                                     ? parent.width * Math.min(1, root.player.position / root.player.length) : 0
                             }
                             MouseArea {
                                 anchors.fill: parent; anchors.topMargin: -6; anchors.bottomMargin: -6
@@ -251,9 +251,9 @@ Scope {
                         }
                         Item {
                             width: parent.width; height: 12
-                            Text { anchors.left: parent.left; font.pixelSize: 10; color: "#a3a3a3"
+                            Text { anchors.left: parent.left; font.pixelSize: 10; color: "#888888"
                                    text: root.player ? root.fmt(root.player.position) : "0:00" }
-                            Text { anchors.right: parent.right; font.pixelSize: 10; color: "#a3a3a3"
+                            Text { anchors.right: parent.right; font.pixelSize: 10; color: "#888888"
                                    text: root.player ? root.fmt(root.player.length) : "0:00" }
                         }
                     }
@@ -283,7 +283,7 @@ Scope {
                         anchors.centerIn: parent
                         visible: root.lines.length === 0
                         text: root.status
-                        color: "#a3a3a3"; font.pixelSize: 12
+                        color: "#888888"; font.pixelSize: 12
                     }
 
                     Column {
@@ -304,7 +304,7 @@ Scope {
                                 font.family: "JetBrainsMono Nerd Font"
                                 font.pixelSize: index === 2 ? 15 : 12
                                 font.weight: index === 2 ? Font.Bold : Font.Normal
-                                color: "#e5e5e5"
+                                color: index === 2 ? "#ffffff" : "#bbbbbb"
                                 opacity: index === 2 ? 1 : (Math.abs(index - 2) === 1 ? 0.45 : 0.2)
                                 text: root.lineAt(root.idx + index - 2)
                             }
