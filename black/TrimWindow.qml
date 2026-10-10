@@ -64,7 +64,7 @@ FloatingWindow {
             Layout.fillHeight: true
         }
 
-        // Seek slider; the green bar shows the selected start..end range
+        // Seek slider; the white/gray bar shows the selected start..end range
         Slider {
             id: seek
             Layout.fillWidth: true
@@ -84,7 +84,7 @@ FloatingWindow {
                 Rectangle {
                     height: parent.height
                     radius: 4
-                    color: "#98fb98"
+                    color: "#ffffff"
                     x: player.duration > 0 ? parent.width * win.panel.startMs / player.duration : 0
                     width: player.duration > 0 ? parent.width * (win.panel.endMs - win.panel.startMs) / player.duration : 0
                 }
@@ -103,8 +103,8 @@ FloatingWindow {
             color: "#e5e5e5"
             text: win.panel.fmt(player.position) + " / " + win.panel.fmt(player.duration)
                   + "     start " + win.panel.fmt(win.panel.startMs)
-                  + "   end " + win.panel.fmt(win.panel.endMs)
-                  + "   length " + win.panel.fmt(Math.max(0, win.panel.endMs - win.panel.startMs))
+                  + "     end " + win.panel.fmt(win.panel.endMs)
+                  + "     length " + win.panel.fmt(Math.max(0, win.panel.endMs - win.panel.startMs))
         }
 
         RowLayout {
@@ -135,7 +135,7 @@ FloatingWindow {
         }
 
         Text {
-            color: "#98fb98"
+            color: "#ffffff"
             text: win.panel.status
             elide: Text.ElideMiddle
             Layout.fillWidth: true
