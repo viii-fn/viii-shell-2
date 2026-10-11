@@ -268,20 +268,6 @@ Scope {
                                 }
                             }
 
-                            HexShape {
-                                Layout.preferredWidth: 64
-                                Layout.preferredHeight: 56
-                                Layout.alignment: Qt.AlignVCenter
-                                fillColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.14)
-                                strokeColor: Theme.accent
-                                strokeWidth: 1.3
-                                HexPattern {
-                                    anchors.fill: parent
-                                    opacity: 0.23
-                                    radius: 7
-                                    stroke: Theme.accentHi
-                                }
-                            }
                         }
                     }
 
