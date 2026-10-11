@@ -3,6 +3,8 @@ import Quickshell
 import Quickshell.Io
 
 // Lightweight controller: state, IPC and ffmpeg only.
+// Stage 4c: keep this IPC controller resident; TrimWindow (including
+// QtMultimedia/player decoders) is created only when a video is opened.
 // No QtMultimedia here. The video window lives in TrimWindow.qml,
 // which is only created when you open a file.
 Scope {

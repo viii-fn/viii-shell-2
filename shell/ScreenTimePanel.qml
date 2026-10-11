@@ -1,9 +1,30 @@
 import QtQuick
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 
 Scope {
     id: root
+
+    // The controller stays resident for IPC. The expensive window is lazy-loaded.
+    property bool shown: false
+    property bool alive: false
+    readonly property int closeMs: 600
+
+    onShownChanged: {
+        if (shown) {
+            unload.stop()
+            alive = true
+        } else {
+            unload.restart()
+        }
+    }
+
+    Timer {
+        id: unload
+        interval: root.closeMs
+        onTriggered: root.alive = false
+    }
 
     property int range: 1
     property int offset: 0
@@ -19,7 +40,7 @@ Scope {
     }
     property int maxDay: Math.max(1, ...days.map(x => x.secs))
     property int denom: Math.max(1, totalSecs)
-    readonly property var palette: ["#3b82f6", "#7fd4ff", "#ffd479", "#ff9fb2", "#c3a6ff", "#ffb07a", "#e5e5e5", "#888888"]
+    readonly property var palette: Theme.chart
 
     function fmt(s) {
         const h = Math.floor(s / 3600)
@@ -55,18 +76,17 @@ Scope {
         progress = 0
         report.running = true
     }
-
     function setView(r, o) {
         range = r
         offset = o
-        if (win.visible) refresh()
+        if (root.shown) refresh()
     }
 
     IpcHandler {
         target: "screentime"
         function toggle(): void {
-            win.visible = !win.visible
-            if (win.visible) root.refresh()
+            root.shown = !root.shown
+            if (root.shown) root.refresh()
             else anim.stop()
         }
     }
@@ -87,245 +107,445 @@ Scope {
         stdout: StdioCollector {
             onStreamFinished: {
                 root.parse(text)
-                if (win.visible) anim.restart()
+                if (root.shown) anim.restart()
             }
         }
     }
 
-    component Tab: Rectangle {
-        id: t
+    component RangeTab: Item {
+        id: tab
         property string label: ""
         property bool active: false
         signal clicked()
-        radius: 10
-        width: 74
-        height: 28
-        color: "transparent"
-        border.width: 1
-        border.color: t.active ? "#3b82f6" : "#888888"
+        implicitWidth: labelText.implicitWidth + 22
+        implicitHeight: 30
+
+        ChamferPanel {
+            anchors.fill: parent
+            cut: 7
+            fillColor: tab.active
+                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.17)
+                : (hit.containsMouse ? Theme.surfaceHi : Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.55))
+            strokeColor: tab.active ? Theme.accent : Theme.line
+        }
         Text {
+            id: labelText
             anchors.centerIn: parent
-            text: t.label
-            color: t.active ? "#60a5fa" : "#e5e5e5"
-            font.pixelSize: 12
+            text: tab.label
+            color: tab.active ? Theme.accentHi : Theme.fgDim
+            font.family: "JetBrainsMono Nerd Font"
+            font.pixelSize: 10
         }
         MouseArea {
+            id: hit
             anchors.fill: parent
+            hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: t.clicked()
+            onClicked: tab.clicked()
         }
     }
 
-    FloatingWindow {
-        id: win
-        visible: false
-        title: "Screen Time"
-        implicitWidth: 440
-        implicitHeight: 640
-        color: Qt.rgba(16/255, 20/255, 28/255, 0.88)   // Warm dark blue-tinted background with transparency
-        onVisibleChanged: if (!visible) anim.stop()
+    LazyLoader {
+        active: root.alive
 
-        Column {
-            anchors.fill: parent
-            anchors.margins: 24
-            spacing: 16
+        FloatingWindow {
+            id: win
+            visible: root.shown
+            title: "Screen Time"
+            implicitWidth: 490
+            implicitHeight: 690
+            color: "transparent"
+            onVisibleChanged: if (!visible) { anim.stop(); root.shown = false }
 
-            Item {
-                width: parent.width
-                height: 28
+            Shortcut { sequence: "Escape"; onActivated: root.shown = false }
 
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "SCREEN TIME"
-                    color: "#888888"
-                    font.pixelSize: 11
-                    font.letterSpacing: 2
-                }
-                Row {
-                    anchors.right: parent.right
-                    spacing: 8
-                    Tab { label: "Today"; active: root.range === 1 && root.offset === 0; onClicked: root.setView(1, 0) }
-                    Tab { label: "Yesterday"; active: root.range === 1 && root.offset === 1; onClicked: root.setView(1, 1) }
-                    Tab { label: "7 days"; active: root.range === 7; onClicked: root.setView(7, 0) }
-                }
-            }
+            ChamferPanel {
+                id: frame
+                anchors.fill: parent
+                cut: 20
+                pattern: true
+                patternOpacity: 0.075
+                fillColor: Theme.panel
+                strokeColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6)
 
-            Text {
-                text: root.fmt(Math.round(root.totalSecs * root.progress))
-                color: "#60a5fa"
-                font.pixelSize: 40
-                font.bold: true
-            }
-
-            Item {
-                id: chart
-                width: parent.width
-                height: 140
-
-                Row {
+                ColumnLayout {
                     anchors.fill: parent
-                    spacing: 8
+                    anchors.margins: 24
+                    spacing: 16
 
-                    Repeater {
-                        model: root.days
-                        readonly property bool isToday: root.range === 1
-                            ? index === root.days.length - 1 - root.offset
-                            : index === root.days.length - 1
+                    // Compact identity row: small hex marker, title, and range controls.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
 
-                        Item {
-                            id: col
-                            width: (chart.width - 48) / 7
-                            height: chart.height
-                            readonly property real local: root.lp(index, root.days.length)
-                            readonly property bool isToday: index === root.days.length - 1
+                        HexButton {
+                            size: 30
+                            glyph: "\uf1da"
+                            glyphSize: 13
+                            outlined: true
+                            interactive: false
+                            tone: Theme.accentHi
+                        }
 
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
                             Text {
-                                anchors.top: parent.top
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: root.fmt(Math.round(modelData.secs * col.local))
-                                color: col.isToday ? "#60a5fa" : "#e5e5e5"
-                                font.pixelSize: 10
-                                opacity: (col.isToday || root.hoverIdx === index) ? 1 : 0
-                                Behavior on opacity { NumberAnimation { duration: 120 } }
+                                text: "SCREEN TIME"
+                                color: Theme.fg
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 13
+                                font.weight: Font.DemiBold
+                                font.letterSpacing: 2
                             }
+                            Text {
+                                text: root.range === 7 ? "YOUR LAST SEVEN DAYS"
+                                      : (root.offset === 1 ? "YESTERDAY'S ACTIVITY" : "TODAY'S ACTIVITY")
+                                color: Theme.fgDim
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 9
+                                font.letterSpacing: 1.2
+                            }
+                        }
 
-                            Rectangle {
-                                id: track
-                                anchors.top: parent.top
-                                anchors.topMargin: 22
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                width: 10
-                                height: 92
-                                radius: 5
-                                color: Qt.rgba(255, 255, 255, 0.06)
+                        RowLayout {
+                            spacing: 5
+                            RangeTab {
+                                label: "Today"
+                                active: root.range === 1 && root.offset === 0
+                                onClicked: root.setView(1, 0)
+                            }
+                            RangeTab {
+                                label: "Yesterday"
+                                active: root.range === 1 && root.offset === 1
+                                onClicked: root.setView(1, 1)
+                            }
+                            RangeTab {
+                                label: "7 days"
+                                active: root.range === 7
+                                onClicked: root.setView(7, 0)
+                            }
+                        }
+                    }
 
-                                Rectangle {
-                                    anchors.bottom: parent.bottom
-                                    width: parent.width
-                                    height: modelData.secs > 0
-                                        ? track.height * Math.max(0.05, modelData.secs / root.maxDay) * col.local
-                                        : 0
-                                    radius: Math.min(5, height / 2)
-                                    color: col.isToday ? "#3b82f6" : "#888888"
+                    // Hero total: visual anchor for the panel.
+                    ChamferPanel {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 128
+                        cut: 16
+                        fillColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.72)
+                        strokeColor: Theme.line
+                        pattern: true
+                        patternOpacity: 0.055
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 20
+                            spacing: 12
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                Text {
+                                    text: "TOTAL ACTIVE TIME"
+                                    color: Theme.fgDim
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: 10
+                                    font.letterSpacing: 1.5
+                                }
+                                Text {
+                                    text: root.fmt(Math.round(root.totalSecs * root.progress))
+                                    color: Theme.accentHi
+                                    font.pixelSize: 39
+                                    font.weight: Font.DemiBold
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: root.apps.length + (root.apps.length === 1 ? " tracked app" : " tracked apps")
+                                    color: Theme.fgDim
+                                    font.pixelSize: 11
                                 }
                             }
 
+                            HexShape {
+                                Layout.preferredWidth: 64
+                                Layout.preferredHeight: 56
+                                Layout.alignment: Qt.AlignVCenter
+                                fillColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.14)
+                                strokeColor: Theme.accent
+                                strokeWidth: 1.3
+                                HexPattern {
+                                    anchors.fill: parent
+                                    opacity: 0.23
+                                    radius: 7
+                                    stroke: Theme.accentHi
+                                }
+                            }
+                        }
+                    }
+
+                    // Seven-day chart remains a conventional chart for easy reading.
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        RowLayout {
+                            Layout.fillWidth: true
                             Text {
-                                anchors.bottom: parent.bottom
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: modelData.label
-                                color: "#888888"
+                                text: "DAILY RHYTHM"
+                                color: Theme.fg
+                                font.family: "JetBrainsMono Nerd Font"
                                 font.pixelSize: 11
+                                font.letterSpacing: 1.6
                             }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: "PEAK " + root.fmt(root.maxDay)
+                                color: Theme.fgDim
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 9
+                            }
+                        }
 
-                            MouseArea {
+                        Item {
+                            id: chart
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 148
+
+                            Row {
                                 anchors.fill: parent
-                                hoverEnabled: true
-                                onEntered: root.hoverIdx = index
-                                onExited: if (root.hoverIdx === index) root.hoverIdx = -1
+                                spacing: 8
+
+                                Repeater {
+                                    model: root.days
+
+                                    Item {
+                                        id: dayCol
+                                        required property var modelData
+                                        required property int index
+                                        width: chart.width / Math.max(1, root.days.length) - 8
+                                        height: chart.height
+                                        readonly property real local: root.lp(index, root.days.length)
+                                        readonly property bool selectedDay: root.range === 1
+                                            ? index === root.days.length - 1 - root.offset
+                                            : index === root.days.length - 1
+
+                                        Text {
+                                            anchors.top: parent.top
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: root.fmt(Math.round(dayCol.modelData.secs * dayCol.local))
+                                            color: dayCol.selectedDay ? Theme.accentHi : Theme.fgDim
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: 9
+                                            opacity: (dayCol.selectedDay || root.hoverIdx === dayCol.index) ? 1 : 0
+                                        }
+
+                                        Rectangle {
+                                            id: track
+                                            anchors.top: parent.top
+                                            anchors.topMargin: 24
+                                            anchors.bottom: parent.bottom
+                                            anchors.bottomMargin: 25
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            width: Math.min(18, dayCol.width * 0.45)
+                                            radius: 3
+                                            color: Qt.rgba(Theme.surfaceHi.r, Theme.surfaceHi.g, Theme.surfaceHi.b, 0.8)
+
+                                            Rectangle {
+                                                anchors.bottom: parent.bottom
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                width: parent.width
+                                                height: dayCol.modelData.secs > 0
+                                                    ? Math.max(3, track.height * dayCol.modelData.secs / root.maxDay * dayCol.local)
+                                                    : 0
+                                                radius: 3
+                                                color: dayCol.selectedDay ? Theme.accent : root.palette[dayCol.index % root.palette.length]
+                                                Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                                            }
+                                        }
+
+                                        Text {
+                                            anchors.bottom: parent.bottom
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: dayCol.modelData.label
+                                            color: dayCol.selectedDay ? Theme.fg : Theme.fgDim
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: 10
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            onEntered: root.hoverIdx = dayCol.index
+                                            onExited: if (root.hoverIdx === dayCol.index) root.hoverIdx = -1
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            }
 
-            Rectangle { width: parent.width; height: 1; color: "#888888"; opacity: 0.4 }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: Theme.line
+                        opacity: 0.8
+                    }
 
-            Text {
-                text: "MOST USED"
-                color: "#888888"
-                font.pixelSize: 11
-                font.letterSpacing: 2
-            }
+                    // Distribution bar and app rows use ordinary shapes, not hexagons.
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
 
-            Text {
-                visible: root.apps.length === 0
-                text: "No data yet. The tracker logs once a minute."
-                color: "#888888"
-                font.pixelSize: 13
-            }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                text: "APP BREAKDOWN"
+                                color: Theme.fg
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 11
+                                font.letterSpacing: 1.6
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: root.apps.length + " ITEMS"
+                                color: Theme.fgDim
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 9
+                            }
+                        }
 
-            Item {
-                id: share
-                visible: root.apps.length > 0
-                width: parent.width
-                height: 10
+                        Text {
+                            Layout.fillWidth: true
+                            visible: root.apps.length === 0
+                            text: "No activity recorded for this period.\nThe tracker logs active applications once a minute."
+                            color: Theme.fgDim
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                        }
 
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 5
-                    color: Qt.rgba(255, 255, 255, 0.06)
-                }
+                        Item {
+                            id: share
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 10
+                            visible: root.apps.length > 0
 
-                Row {
-                    spacing: 2
-                    height: parent.height
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 3
+                                color: Theme.surface
+                            }
+                            Row {
+                                anchors.fill: parent
+                                spacing: 2
+                                Repeater {
+                                    model: root.apps
+                                    Rectangle {
+                                        required property var modelData
+                                        required property int index
+                                        height: share.height
+                                        radius: 2
+                                        width: Math.max(0, (modelData.secs / root.denom)
+                                            * (share.width - 2 * Math.max(0, root.apps.length - 1)) * root.progress)
+                                        visible: width > 1
+                                        color: root.palette[index % root.palette.length]
+                                    }
+                                }
+                            }
+                        }
 
-                    Repeater {
-                        model: root.apps
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 9
 
-                        Rectangle {
-                            height: share.height
-                            radius: 5
-                            width: (modelData.secs / root.denom)
-                                   * (share.width - 2 * Math.max(0, root.apps.length - 1))
-                                   * root.progress
-                            visible: width > 1
-                            color: root.palette[index % root.palette.length]
+                            Repeater {
+                                model: root.apps.slice(0, 6)
+
+                                Item {
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 28
+                                    readonly property real local: root.lp(index, Math.min(6, root.apps.length))
+                                    opacity: local
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        spacing: 10
+
+                                        HexShape {
+                                            Layout.preferredWidth: 13
+                                            Layout.preferredHeight: 11
+                                            fillColor: root.palette[index % root.palette.length]
+                                            strokeWidth: 0
+                                        }
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 4
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: root.pretty(modelData.name)
+                                                color: Theme.fg
+                                                font.pixelSize: 12
+                                                elide: Text.ElideRight
+                                            }
+                                            Rectangle {
+                                                Layout.fillWidth: true
+                                                height: 3
+                                                radius: 2
+                                                color: Theme.surface
+                                                Rectangle {
+                                                    width: parent.width * Math.min(1, modelData.secs / root.maxDay)
+                                                    height: parent.height
+                                                    radius: 2
+                                                    color: root.palette[index % root.palette.length]
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            text: Math.round(modelData.secs / root.denom * 100 * root.progress) + "%"
+                                            color: Theme.fgDim
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: 10
+                                            horizontalAlignment: Text.AlignRight
+                                            Layout.preferredWidth: 36
+                                        }
+                                        Text {
+                                            text: root.fmt(Math.round(modelData.secs * local))
+                                            color: Theme.fg
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: 10
+                                            horizontalAlignment: Text.AlignRight
+                                            Layout.preferredWidth: 62
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                }
-            }
 
-            Column {
-                width: parent.width
-                spacing: 10
+                    Item { Layout.fillHeight: true; Layout.minimumHeight: 0 }
 
-                Repeater {
-                    model: root.apps
-
-                    Item {
-                        id: row
-                        width: parent.width
-                        height: 20
-                        readonly property real local: root.lp(index, root.apps.length)
-                        opacity: local
-
-                        Rectangle {
-                            id: dot
-                            width: 8
-                            height: 8
-                            radius: 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: root.palette[index % root.palette.length]
-                        }
+                    RowLayout {
+                        Layout.fillWidth: true
                         Text {
-                            anchors.left: dot.right
-                            anchors.leftMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: root.pretty(modelData.name)
-                            color: "#e5e5e5"
-                            font.pixelSize: 14
+                            text: "VII / ACTIVITY LOG"
+                            color: Theme.fgDim
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 9
+                            font.letterSpacing: 1
                         }
-                        Text {
-                            id: timeText
-                            width: 70
-                            horizontalAlignment: Text.AlignRight
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: root.fmt(Math.round(modelData.secs * row.local))
-                            color: "#e5e5e5"
-                            font.pixelSize: 14
-                        }
-                        Text {
-                            width: 40
-                            horizontalAlignment: Text.AlignRight
-                            anchors.right: timeText.left
-                            anchors.rightMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Math.round(modelData.secs / root.denom * 100 * row.local) + "%"
-                            color: "#888888"
-                            font.pixelSize: 12
+                        Item { Layout.fillWidth: true }
+                        HexButton {
+                            size: 26
+                            glyph: "\uf021"
+                            glyphSize: 11
+                            outlined: true
+                            tone: Theme.accentHi
+                            onClicked: root.refresh()
                         }
                     }
                 }
