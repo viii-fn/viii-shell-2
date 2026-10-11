@@ -1,0 +1,19 @@
+singleton Theme Theme.qml
+AudioPanel AudioPanel.qml
+ChamferPanel ChamferPanel.qml
+DpiPanel DpiPanel.qml
+DpiWindow DpiWindow.qml
+HexButton HexButton.qml
+HexPattern HexPattern.qml
+HexShape HexShape.qml
+HexSlider HexSlider.qml
+Island Island.qml
+Lock Lock.qml
+MusicCard MusicCard.qml
+MusicPanel MusicPanel.qml
+ScreenTimeLogger ScreenTimeLogger.qml
+ScreenTimePanel ScreenTimePanel.qml
+TrimPanel TrimPanel.qml
+TrimWindow TrimWindow.qml
+WifiPanel WifiPanel.qml
+WifiWindow WifiWindow.qml
