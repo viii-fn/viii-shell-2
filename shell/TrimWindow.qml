@@ -48,7 +48,7 @@ FloatingWindow {
 
     MediaPlayer {
         id: player
-        source: win.panel ? Qt.resolvedUrl(win.panel.file) : ""
+        source: win.panel ? "file://" + win.panel.file : ""
         videoOutput: out
         audioOutput: AudioOutput {}
         onDurationChanged: if (win.panel && win.panel.endMs === 0) win.panel.endMs = duration
