@@ -1,3 +1,7 @@
+// Quick Settings, glass style. Layer-shell card pinned to the right edge.
+//   qs ipc call quicksettings toggle
+// Sliders, toggle tiles, Wi-Fi and Bluetooth cards, two-tap power row. Esc closes.
+
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -10,6 +14,7 @@ Scope {
     property bool shown: false
     property bool alive: false
     readonly property int closeMs: 600
+    readonly property string mono: "JetBrainsMono Nerd Font"
 
     onShownChanged: {
         if (shown) {
@@ -64,7 +69,7 @@ Scope {
     property bool btOn: false
     property string profile: ""
 
-    // ── Wi-Fi state (ported from the old WifiWindow) ──
+    // ── Wi-Fi state ──
     property bool wifiOn: true
     property var current: null
     property var saved: ({})
@@ -77,11 +82,8 @@ Scope {
     property var btDevs: []
     property bool btNeeded: false
     property string armed: ""
-    property int hoverTile: -1
 
     readonly property string report: Quickshell.env("HOME") + "/.local/bin/quicksettings-report"
-    readonly property real hexW: 88
-    readonly property real hexH: 76
 
     ListModel { id: networks }
 
@@ -93,7 +95,7 @@ Scope {
             { id: "air", glyph: "\uf072", title: "Airplane", sub: (!wifiOn && !btOn) ? "On" : "Off", on: !wifiOn && !btOn }
         ]
         if (profile !== "")
-            t.push({ id: "prof", glyph: "\uf0e7", title: "Power mode", sub: profileLabel(profile), on: profile !== "balanced" })
+            t.push({ id: "prof", glyph: "\uf0e7", title: "Power", sub: profileLabel(profile), on: profile !== "balanced" })
         return t
     }
 
@@ -369,16 +371,17 @@ Scope {
 
             Shortcut { sequence: "Escape"; onActivated: root.shown = false }
 
-            ChamferPanel {
+            // Glass body
+            Rectangle {
                 id: card
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
-                cut: 22
-                pattern: true
-                patternOpacity: 0.05
-                fillColor: Theme.panel
-                strokeColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
+                radius: 24
+                clip: true
+                color: Qt.alpha(Theme.panel, 0.82)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.12)
                 opacity: root.enter
                 transform: Translate { x: (1 - root.enter) * 56 }
 
@@ -387,6 +390,16 @@ Scope {
                 property real h: Math.min(wanted, win.height)
                 Behavior on h { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
                 height: h
+
+                // Specular sheen across the top
+                Rectangle {
+                    anchors.fill: parent
+                    radius: card.radius
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.10) }
+                        GradientStop { position: 0.25; color: Qt.rgba(1, 1, 1, 0.0) }
+                    }
+                }
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -397,45 +410,33 @@ Scope {
                     RowLayout {
                         id: headerRow
                         Layout.fillWidth: true
-                        spacing: 12
+                        spacing: 10
                         opacity: root.lp(0, 7)
 
-                        HexButton {
-                            Layout.preferredWidth: 32 * 1.1547
-                            Layout.preferredHeight: 32
-                            size: 32
-                            glyph: "\uf013"
-                            glyphSize: 13
-                            outlined: true
-                            interactive: false
-                            tone: Theme.accentHi
-                        }
                         ColumnLayout {
                             spacing: 0
                             Text {
                                 text: "Quick Settings"
                                 color: Theme.fg
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 16
+                                font.family: root.mono
+                                font.pixelSize: 18
                                 font.weight: Font.DemiBold
                             }
                             Text {
                                 text: Qt.formatDateTime(clock.date, "ddd d MMM  ·  HH:mm")
                                 color: Theme.fgDim
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 10
+                                font.family: root.mono
+                                font.pixelSize: 11
                             }
                         }
                         Item { Layout.fillWidth: true }
 
-                        Rectangle {
+                        Glass {
                             visible: root.hasBat
-                            Layout.preferredHeight: 28
-                            Layout.preferredWidth: batRow.implicitWidth + 22
-                            radius: 14
-                            color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.7)
-                            border.width: 1
-                            border.color: Theme.line
+                            Layout.preferredHeight: 30
+                            Layout.preferredWidth: batRow.implicitWidth + 24
+                            radius: 15
+
                             Row {
                                 id: batRow
                                 anchors.centerIn: parent
@@ -443,24 +444,19 @@ Scope {
                                 Text {
                                     text: root.batGlyph()
                                     color: (root.bat <= 15 && root.batStatus !== "Charging") ? Theme.bad : Theme.accentHi
-                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.family: root.mono
                                     font.pixelSize: 12
                                 }
                                 Text {
                                     text: root.bat + "%"
                                     color: Theme.fg
-                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.family: root.mono
                                     font.pixelSize: 11
                                 }
                             }
                         }
-                        HexButton {
-                            Layout.preferredWidth: 28 * 1.1547
-                            Layout.preferredHeight: 28
-                            size: 28
+                        IconBtn {
                             glyph: "\uf00d"
-                            glyphSize: 11
-                            outlined: true
                             tone: Theme.accentHi
                             onClicked: root.shown = false
                         }
@@ -471,7 +467,7 @@ Scope {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 2
                         clip: true
-                        Rectangle { anchors.fill: parent; color: Theme.line; opacity: 0.6 }
+                        Rectangle { anchors.fill: parent; color: Qt.rgba(1, 1, 1, 0.10) }
                         Rectangle {
                             width: 140
                             height: 2
@@ -502,12 +498,10 @@ Scope {
                             spacing: 14
 
                             // ── Sliders ──
-                            ChamferPanel {
+                            Glass {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: sliders.implicitHeight + 28
-                                cut: 12
-                                fillColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.5)
-                                strokeColor: Theme.line
+                                radius: 20
                                 opacity: root.lp(1, 7)
                                 transform: Translate { y: (1 - root.lp(1, 7)) * 16 }
 
@@ -541,117 +535,93 @@ Scope {
                                 }
                             }
 
-                            // ── Honeycomb toggles ──
-                            Item {
-                                id: hive
-                                Layout.alignment: Qt.AlignHCenter
-                                Layout.topMargin: 4
-                                Layout.preferredWidth: root.hexW * (0.75 * (root.tiles.length - 1) + 1)
-                                Layout.preferredHeight: root.hexH * 1.5
+                            // ── Toggle tiles ──
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
 
                                 Repeater {
                                     model: root.tiles
 
-                                    Item {
+                                    Glass {
                                         id: tile
                                         required property var modelData
                                         required property int index
-                                        width: root.hexW
-                                        height: root.hexH
-                                        x: index * root.hexW * 0.75
-                                        y: (index % 2) * root.hexH / 2
+                                        Layout.fillWidth: true
+                                        Layout.preferredWidth: 1
+                                        Layout.preferredHeight: 78
+                                        radius: 18
                                         opacity: root.lp(index + 1, 8)
-                                        scale: tHit.pressed ? 0.93 : (tHit.containsMouse ? 1.07 : 1)
+                                        scale: tHit.pressed ? 0.95 : (tHit.containsMouse ? 1.04 : 1)
                                         Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
 
-                                        // Soft pulse ring on active tiles
-                                        HexShape {
-                                            id: pulse
+                                        // Active tint
+                                        Rectangle {
                                             anchors.fill: parent
-                                            fillColor: Theme.accent
-                                            strokeWidth: 0
-                                            opacity: 0
-                                            visible: tile.modelData.on
-                                        }
-                                        SequentialAnimation {
-                                            running: tile.modelData.on && root.shown
-                                            loops: Animation.Infinite
-                                            ParallelAnimation {
-                                                NumberAnimation { target: pulse; property: "opacity"; from: 0.35; to: 0; duration: 1800; easing.type: Easing.OutQuad }
-                                                NumberAnimation { target: pulse; property: "scale"; from: 1; to: 1.3; duration: 1800; easing.type: Easing.OutQuad }
-                                            }
-                                            PauseAnimation { duration: 500 }
-                                        }
-
-                                        HexShape {
-                                            anchors.fill: parent
-                                            fillColor: tile.modelData.on ? Theme.accent : Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.85)
-                                            strokeColor: tile.modelData.on ? Theme.accentHi : Theme.line
-                                            strokeWidth: 1.5
-                                            Behavior on fillColor { ColorAnimation { duration: 180 } }
+                                            radius: 18
+                                            color: Qt.alpha(Theme.accent, 0.22)
+                                            border.width: 1
+                                            border.color: Theme.accent
+                                            opacity: tile.modelData.on ? 1 : 0
+                                            Behavior on opacity { NumberAnimation { duration: 180 } }
                                         }
 
                                         ColumnLayout {
-                                            anchors.centerIn: parent
-                                            spacing: 3
+                                            anchors.fill: parent
+                                            anchors.margins: 6
+                                            spacing: 2
+                                            Item { Layout.fillHeight: true }
                                             Text {
                                                 Layout.alignment: Qt.AlignHCenter
                                                 text: tile.modelData.glyph
-                                                color: tile.modelData.on ? Theme.accentText : Theme.accentHi
-                                                font.family: "JetBrainsMono Nerd Font"
-                                                font.pixelSize: 22
+                                                color: tile.modelData.on ? Theme.accentHi : Theme.fgDim
+                                                font.family: root.mono
+                                                font.pixelSize: 20
                                             }
                                             Text {
                                                 Layout.alignment: Qt.AlignHCenter
+                                                Layout.fillWidth: true
+                                                horizontalAlignment: Text.AlignHCenter
                                                 text: tile.modelData.title
-                                                color: tile.modelData.on ? Theme.accentText : Theme.fgDim
-                                                font.family: "JetBrainsMono Nerd Font"
-                                                font.pixelSize: 8
-                                                font.letterSpacing: 0.8
+                                                color: tile.modelData.on ? Theme.fg : Theme.fgDim
+                                                font.family: root.mono
+                                                font.pixelSize: 9
+                                                font.weight: Font.DemiBold
+                                                elide: Text.ElideRight
                                             }
+                                            Text {
+                                                Layout.alignment: Qt.AlignHCenter
+                                                Layout.fillWidth: true
+                                                horizontalAlignment: Text.AlignHCenter
+                                                text: tile.modelData.sub
+                                                color: Theme.fgDim
+                                                font.family: root.mono
+                                                font.pixelSize: 8
+                                                elide: Text.ElideRight
+                                            }
+                                            Item { Layout.fillHeight: true }
                                         }
 
                                         MouseArea {
                                             id: tHit
                                             anchors.fill: parent
-                                            anchors.margins: 6
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onEntered: root.hoverTile = tile.index
-                                            onExited: if (root.hoverTile === tile.index) root.hoverTile = -1
                                             onClicked: root.tileClick(tile.modelData.id)
                                         }
                                     }
                                 }
                             }
 
-                            // Caption for the hovered hex
-                            Text {
-                                Layout.alignment: Qt.AlignHCenter
-                                Layout.preferredHeight: 14
-                                text: root.hoverTile >= 0 && root.hoverTile < root.tiles.length
-                                    ? root.tiles[root.hoverTile].title + "  ·  " + root.tiles[root.hoverTile].sub
-                                    : ""
-                                color: Theme.accentHi
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 10
-                                elide: Text.ElideRight
-                                Behavior on text { enabled: false }
-                            }
-
                             // ── Wi-Fi card ──
-                            ChamferPanel {
+                            Glass {
                                 id: wifiCard
                                 Layout.fillWidth: true
                                 property real h: wifiCol.implicitHeight + 28
                                 Behavior on h { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
                                 Layout.preferredHeight: h
                                 clip: true
-                                cut: 14
-                                fillColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.6)
-                                strokeColor: (root.wifiOn && root.current)
-                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
-                                    : Theme.line
+                                radius: 20
                                 opacity: root.lp(5, 7)
                                 transform: Translate { y: (1 - root.lp(5, 7)) * 16 }
 
@@ -699,7 +669,7 @@ Scope {
                                                     Layout.fillWidth: true
                                                     text: !root.wifiOn ? "Wi-Fi is off" : (root.current ? root.current.ssid : "Not connected")
                                                     color: Theme.fg
-                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.family: root.mono
                                                     font.pixelSize: 14
                                                     font.weight: Font.DemiBold
                                                     elide: Text.ElideRight
@@ -707,18 +677,18 @@ Scope {
                                                 Text {
                                                     visible: root.wifiOn && root.current !== null
                                                     textFormat: Text.RichText
-                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.family: root.mono
                                                     text: root.current ? root.sigHtml(Math.round(root.current.strength * root.intro)) : ""
                                                 }
                                                 Text {
                                                     Layout.fillWidth: true
-                                                    text: !root.wifiOn ? "Tap the hex to turn on"
+                                                    text: !root.wifiOn ? "Tap the Wi-Fi tile to turn on"
                                                         : (root.current
                                                             ? (root.current.band + (root.current.band !== "" ? " · " : "")
                                                                + (root.current.security !== "" ? "Secured" : "Open"))
                                                             : "Tap to pick a network")
                                                     color: Theme.fgDim
-                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.family: root.mono
                                                     font.pixelSize: 10
                                                     elide: Text.ElideRight
                                                 }
@@ -732,13 +702,13 @@ Scope {
                                                 radius: 14
                                                 color: dcHit.containsMouse ? Qt.rgba(Theme.bad.r, Theme.bad.g, Theme.bad.b, 0.25) : Qt.rgba(1, 1, 1, 0.06)
                                                 border.width: 1
-                                                border.color: dcHit.containsMouse ? Theme.bad : Theme.line
+                                                border.color: dcHit.containsMouse ? Theme.bad : Qt.rgba(1, 1, 1, 0.12)
                                                 Text {
                                                     id: dcText
                                                     anchors.centerIn: parent
                                                     text: "Disconnect"
                                                     color: dcHit.containsMouse ? Theme.bad : Theme.fgDim
-                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.family: root.mono
                                                     font.pixelSize: 9
                                                 }
                                                 MouseArea {
@@ -757,7 +727,7 @@ Scope {
                                                 Layout.alignment: Qt.AlignVCenter
                                                 text: "\uf078"
                                                 color: Theme.fgDim
-                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.family: root.mono
                                                 font.pixelSize: 11
                                                 rotation: root.expanded === "wifi" ? 180 : 0
                                                 Behavior on rotation { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
@@ -776,7 +746,7 @@ Scope {
                                             visible: root.msg !== "" && root.wifiOn
                                             text: root.msg
                                             color: root.badPassword ? Theme.bad : Theme.fgDim
-                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.family: root.mono
                                             font.pixelSize: 10
                                             elide: Text.ElideRight
                                         }
@@ -784,10 +754,11 @@ Scope {
                                         RowLayout {
                                             Layout.fillWidth: true
                                             visible: root.wifiOn
+                                            spacing: 8
                                             Text {
                                                 text: "AVAILABLE"
                                                 color: Theme.fgDim
-                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.family: root.mono
                                                 font.pixelSize: 9
                                                 font.letterSpacing: 1.6
                                             }
@@ -795,16 +766,11 @@ Scope {
                                             Text {
                                                 text: scan.running ? "scanning…" : networks.count + " found"
                                                 color: Theme.fgDim
-                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.family: root.mono
                                                 font.pixelSize: 9
                                             }
-                                            HexButton {
-                                                Layout.preferredWidth: 22 * 1.1547
-                                                Layout.preferredHeight: 22
-                                                size: 22
+                                            IconBtn {
                                                 glyph: "\uf021"
-                                                glyphSize: 9
-                                                outlined: true
                                                 tone: Theme.accentHi
                                                 onClicked: { scan.running = true; savedList.running = true }
                                             }
@@ -817,7 +783,7 @@ Scope {
                                             Layout.preferredHeight: 2
                                             clip: true
                                             visible: root.wifiOn
-                                            Rectangle { anchors.fill: parent; color: Theme.line; opacity: 0.5 }
+                                            Rectangle { anchors.fill: parent; color: Qt.rgba(1, 1, 1, 0.10) }
                                             Rectangle {
                                                 visible: scan.running
                                                 width: 90
@@ -872,11 +838,13 @@ Scope {
 
                                                 onPendingChanged: if (pending) { reveal = false; pw.text = ""; pw.forceActiveFocus() }
 
-                                                ChamferPanel {
+                                                Rectangle {
                                                     anchors.fill: parent
-                                                    cut: 10
-                                                    fillColor: hit.containsMouse || row.pending ? Theme.surface : Qt.rgba(1, 1, 1, 0.04)
-                                                    strokeColor: row.pending ? (root.badPassword ? Theme.bad : Theme.accent) : "transparent"
+                                                    radius: 14
+                                                    color: hit.containsMouse || row.pending ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(1, 1, 1, 0.04)
+                                                    border.width: row.pending ? 1 : 0
+                                                    border.color: root.badPassword ? Theme.bad : Theme.accent
+                                                    Behavior on color { ColorAnimation { duration: 120 } }
                                                 }
 
                                                 Item {
@@ -926,7 +894,7 @@ Scope {
                                                                 Layout.fillWidth: true
                                                                 text: row.ssid
                                                                 color: Theme.fg
-                                                                font.family: "JetBrainsMono Nerd Font"
+                                                                font.family: root.mono
                                                                 font.pixelSize: 12
                                                                 elide: Text.ElideRight
                                                             }
@@ -935,7 +903,7 @@ Scope {
                                                                 text: (row.isSaved ? "saved · " : "") + (row.security !== "" ? "secured" : "open")
                                                                       + (row.band !== "" ? " · " + row.band : "")
                                                                 color: row.isSaved ? Theme.accent : Theme.fgDim
-                                                                font.family: "JetBrainsMono Nerd Font"
+                                                                font.family: root.mono
                                                                 font.pixelSize: 9
                                                                 elide: Text.ElideRight
                                                             }
@@ -945,14 +913,14 @@ Scope {
                                                             visible: row.security !== ""
                                                             text: "\uf023"
                                                             color: Theme.fgDim
-                                                            font.family: "JetBrainsMono Nerd Font"
+                                                            font.family: root.mono
                                                             font.pixelSize: 11
                                                         }
                                                         Text {
                                                             visible: row.isSaved
                                                             text: "\uf1f8"
                                                             color: forgetHit.containsMouse ? Theme.bad : Theme.fgDim
-                                                            font.family: "JetBrainsMono Nerd Font"
+                                                            font.family: root.mono
                                                             font.pixelSize: 12
                                                             MouseArea {
                                                                 id: forgetHit
@@ -976,18 +944,18 @@ Scope {
                                                     y: 52
                                                     width: parent.width - 20
                                                     height: 38
-                                                    radius: 12
-                                                    color: Qt.rgba(Theme.surfaceHi.r, Theme.surfaceHi.g, Theme.surfaceHi.b, 0.7)
+                                                    radius: 19
+                                                    color: Qt.alpha(Theme.surfaceHi, 0.7)
                                                     border.width: 1
                                                     border.color: root.badPassword ? Theme.bad : Theme.accent
 
                                                     Text {
                                                         anchors.left: parent.left
-                                                        anchors.leftMargin: 14
+                                                        anchors.leftMargin: 16
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         text: "Password"
                                                         color: Theme.fgDim
-                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.family: root.mono
                                                         font.pixelSize: 12
                                                         visible: pw.text === ""
                                                     }
@@ -995,12 +963,12 @@ Scope {
                                                         id: pw
                                                         anchors.left: parent.left
                                                         anchors.right: eye.left
-                                                        anchors.leftMargin: 14
+                                                        anchors.leftMargin: 16
                                                         anchors.rightMargin: 8
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         echoMode: row.reveal ? TextInput.Normal : TextInput.Password
                                                         color: Theme.fg
-                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.family: root.mono
                                                         font.pixelSize: 12
                                                         clip: true
                                                         onAccepted: root.connectTo(row.ssid, true, text)
@@ -1013,7 +981,7 @@ Scope {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         text: row.reveal ? "\uf070" : "\uf06e"
                                                         color: Theme.fgDim
-                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.family: root.mono
                                                         font.pixelSize: 12
                                                         MouseArea {
                                                             anchors.fill: parent
@@ -1027,15 +995,15 @@ Scope {
                                                         anchors.right: parent.right
                                                         anchors.rightMargin: 5
                                                         anchors.verticalCenter: parent.verticalCenter
-                                                        width: 50
+                                                        width: 54
                                                         height: 28
-                                                        radius: 9
+                                                        radius: 14
                                                         color: Theme.accent
                                                         Text {
                                                             anchors.centerIn: parent
                                                             text: "Join"
                                                             color: Theme.accentText
-                                                            font.family: "JetBrainsMono Nerd Font"
+                                                            font.family: root.mono
                                                             font.pixelSize: 11
                                                             font.weight: Font.DemiBold
                                                         }
@@ -1054,7 +1022,7 @@ Scope {
                                             visible: root.wifiOn && networks.count === 0 && !scan.running
                                             text: "No other networks found"
                                             color: Theme.fgDim
-                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.family: root.mono
                                             font.pixelSize: 11
                                         }
                                     }
@@ -1062,16 +1030,14 @@ Scope {
                             }
 
                             // ── Bluetooth card ──
-                            ChamferPanel {
+                            Glass {
                                 id: btCard
                                 Layout.fillWidth: true
                                 property real h: btCol.implicitHeight + 28
                                 Behavior on h { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
                                 Layout.preferredHeight: h
                                 clip: true
-                                cut: 14
-                                fillColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.6)
-                                strokeColor: root.btOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55) : Theme.line
+                                radius: 20
                                 opacity: root.lp(6, 7)
                                 transform: Translate { y: (1 - root.lp(6, 7)) * 16 }
 
@@ -1094,15 +1060,20 @@ Scope {
                                             anchors.fill: parent
                                             spacing: 12
 
-                                            HexButton {
-                                                Layout.preferredWidth: 34 * 1.1547
-                                                Layout.preferredHeight: 34
-                                                size: 34
-                                                glyph: "\uf293"
-                                                glyphSize: 14
-                                                outlined: !root.btOn
-                                                interactive: false
-                                                tone: Theme.accentHi
+                                            Rectangle {
+                                                Layout.preferredWidth: 36
+                                                Layout.preferredHeight: 36
+                                                radius: 18
+                                                color: root.btOn ? Qt.alpha(Theme.accent, 0.22) : Qt.rgba(1, 1, 1, 0.06)
+                                                border.width: root.btOn ? 1 : 0
+                                                border.color: Theme.accent
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: "\uf293"
+                                                    color: root.btOn ? Theme.accentHi : Theme.fgDim
+                                                    font.family: root.mono
+                                                    font.pixelSize: 14
+                                                }
                                             }
                                             ColumnLayout {
                                                 Layout.fillWidth: true
@@ -1110,7 +1081,7 @@ Scope {
                                                 Text {
                                                     text: "Bluetooth"
                                                     color: Theme.fg
-                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.family: root.mono
                                                     font.pixelSize: 13
                                                     font.weight: Font.DemiBold
                                                 }
@@ -1118,7 +1089,7 @@ Scope {
                                                     Layout.fillWidth: true
                                                     text: root.btOn ? root.btSummary() : "Off"
                                                     color: Theme.fgDim
-                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.family: root.mono
                                                     font.pixelSize: 10
                                                     elide: Text.ElideRight
                                                 }
@@ -1126,7 +1097,7 @@ Scope {
                                             Text {
                                                 text: "\uf078"
                                                 color: Theme.fgDim
-                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.family: root.mono
                                                 font.pixelSize: 11
                                                 rotation: root.expanded === "bt" ? 180 : 0
                                                 Behavior on rotation { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
@@ -1143,7 +1114,7 @@ Scope {
                                             visible: root.btDevs.length === 0
                                             text: root.btOn ? "No paired devices" : "Bluetooth is off"
                                             color: Theme.fgDim
-                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.family: root.mono
                                             font.pixelSize: 11
                                         }
 
@@ -1156,12 +1127,14 @@ Scope {
                                                 required property int index
                                                 Layout.fillWidth: true
                                                 Layout.preferredHeight: 38
-                                                radius: 10
+                                                radius: 19
                                                 opacity: 0
                                                 transform: Translate { id: dTr; x: 28 }
                                                 color: modelData.connected
-                                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
-                                                    : (dHit.containsMouse ? Theme.surface : Qt.rgba(1, 1, 1, 0.04))
+                                                    ? Qt.alpha(Theme.accent, 0.18)
+                                                    : (dHit.containsMouse ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(1, 1, 1, 0.04))
+                                                border.width: modelData.connected ? 1 : 0
+                                                border.color: Theme.accent
 
                                                 SequentialAnimation {
                                                     running: true
@@ -1174,21 +1147,21 @@ Scope {
 
                                                 RowLayout {
                                                     anchors.fill: parent
-                                                    anchors.leftMargin: 14
-                                                    anchors.rightMargin: 14
+                                                    anchors.leftMargin: 16
+                                                    anchors.rightMargin: 16
                                                     spacing: 8
                                                     Text {
                                                         Layout.fillWidth: true
                                                         text: drow.modelData.name
                                                         color: drow.modelData.connected ? Theme.accentHi : Theme.fg
-                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.family: root.mono
                                                         font.pixelSize: 12
                                                         elide: Text.ElideRight
                                                     }
                                                     Text {
                                                         text: drow.modelData.connected ? "connected" : "tap to connect"
                                                         color: Theme.fgDim
-                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.family: root.mono
                                                         font.pixelSize: 9
                                                     }
                                                 }
@@ -1227,24 +1200,19 @@ Scope {
                                         Layout.preferredWidth: 1
                                         spacing: 4
 
-                                        HexButton {
+                                        IconBtn {
                                             Layout.alignment: Qt.AlignHCenter
-                                            Layout.preferredWidth: 38 * 1.1547
-                                            Layout.preferredHeight: 38
-                                            size: 38
                                             glyph: pb.modelData.glyph
-                                            glyphSize: 14
-                                            outlined: root.armed !== pb.modelData.id
-                                            tone: Theme.accentHi
-                                            scale: root.armed === pb.modelData.id ? 1.15 : 1
+                                            tone: root.armed === pb.modelData.id ? Theme.bad : Theme.accentHi
+                                            scale: root.armed === pb.modelData.id ? 1.2 : 1
                                             Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
                                             onClicked: root.power(pb.modelData.id)
                                         }
                                         Text {
                                             Layout.alignment: Qt.AlignHCenter
                                             text: root.armed === pb.modelData.id ? "Tap again" : pb.modelData.label
-                                            color: root.armed === pb.modelData.id ? Theme.accentHi : Theme.fgDim
-                                            font.family: "JetBrainsMono Nerd Font"
+                                            color: root.armed === pb.modelData.id ? Theme.bad : Theme.fgDim
+                                            font.family: root.mono
                                             font.pixelSize: 9
                                         }
                                     }
