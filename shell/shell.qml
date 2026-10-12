@@ -21,7 +21,6 @@ ShellRoot {
 
     // Lock is not wrapped: WlSessionLock already makes a lock surface per monitor by itself.
     MusicPanel {}
-    WifiPanel {}
     AudioPanel {}
     ScreenTimeLogger {}
     DpiPanel {}
@@ -31,4 +30,5 @@ ShellRoot {
     GalleryPanel {}
     NotesPanel {}
     WeatherPanel {}
+    QuickSettings {}
 }

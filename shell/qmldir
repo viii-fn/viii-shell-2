@@ -15,9 +15,9 @@ ScreenTimeLogger ScreenTimeLogger.qml
 ScreenTimePanel ScreenTimePanel.qml
 TrimPanel TrimPanel.qml
 TrimWindow TrimWindow.qml
-WifiPanel WifiPanel.qml
-WifiWindow WifiWindow.qml
 OmniLauncher OmniLauncher.qml
 GalleryPanel GalleryPanel.qml
 NotesPanel NotesPanel.qml
 WeatherPanel WeatherPanel.qml
+QsSliderRow QsSliderRow.qml
+QuickSettings QuickSettings.qml
