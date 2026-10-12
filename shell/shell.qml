@@ -30,4 +30,5 @@ ShellRoot {
     OmniLauncher {}
     GalleryPanel {}
     NotesPanel {}
+    WeatherPanel {}
 }

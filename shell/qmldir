@@ -20,3 +20,4 @@ WifiWindow WifiWindow.qml
 OmniLauncher OmniLauncher.qml
 GalleryPanel GalleryPanel.qml
 NotesPanel NotesPanel.qml
+WeatherPanel WeatherPanel.qml
