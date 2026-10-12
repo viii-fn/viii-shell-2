@@ -27,4 +27,5 @@ ShellRoot {
     DpiPanel {}
     ScreenTimePanel {}
     TrimPanel {}
+    OmniLauncher {}
 }

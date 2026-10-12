@@ -17,3 +17,4 @@ TrimPanel TrimPanel.qml
 TrimWindow TrimWindow.qml
 WifiPanel WifiPanel.qml
 WifiWindow WifiWindow.qml
+OmniLauncher OmniLauncher.qml
