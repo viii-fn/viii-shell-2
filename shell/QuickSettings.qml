@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 
 Scope {
     id: root
@@ -14,6 +15,7 @@ Scope {
         if (shown) {
             unload.stop()
             alive = true
+            introAnim.restart()
         } else {
             unload.restart()
             armed = ""
@@ -27,48 +29,92 @@ Scope {
         onTriggered: root.alive = false
     }
 
-    // Soft fade/slide in and out
-    property real enter: shown ? 1 : 0
-    Behavior on enter { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+    SystemClock {
+        id: clock
+        precision: SystemClock.Minutes
+    }
 
-    // ── State (filled by quicksettings-report) ──
+    // Slide/fade of the whole card, and a staggered intro for the sections inside it
+    property real enter: shown ? 1 : 0
+    Behavior on enter { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+
+    property real intro: 0
+    NumberAnimation {
+        id: introAnim
+        target: root
+        property: "intro"
+        from: 0
+        to: 1
+        duration: 1100
+        easing.type: Easing.OutCubic
+    }
+    function lp(i, n) {
+        return Math.max(0, Math.min(1, intro * (1 + 0.14 * (n - 1)) - i * 0.14))
+    }
+
+    // ── System state (from quicksettings-report) ──
     property int vol: 0
     property bool muted: false
+    property bool micMuted: false
     property int bri: 0
     property bool hasBri: false
     property int bat: 0
     property string batStatus: ""
     property bool hasBat: false
-    property bool wifiOn: false
-    property string ssid: ""
     property bool btOn: false
     property string profile: ""
 
-    property string expanded: ""        // "", "wifi" or "bt"
-    property var nets: []
+    // ── Wi-Fi state (ported from the old WifiWindow) ──
+    property bool wifiOn: true
+    property var current: null
+    property var saved: ({})
+    property string pendingSsid: ""
+    property bool badPassword: false
+    property string msg: ""
+
+    // ── UI state ──
+    property string expanded: ""          // "", "wifi" or "bt"
     property var btDevs: []
-    property string pendingSsid: ""     // network waiting for a password
-    property bool rescan: false
-    property string armed: ""           // power action waiting for a second tap
+    property bool btNeeded: false
+    property string armed: ""
+    property int hoverTile: -1
 
     readonly property string report: Quickshell.env("HOME") + "/.local/bin/quicksettings-report"
+    readonly property real hexW: 88
+    readonly property real hexH: 76
+
+    ListModel { id: networks }
 
     readonly property var tiles: {
         const t = [
-            { id: "wifi", glyph: "\uf1eb", title: "Wi-Fi", sub: wifiOn ? (ssid !== "" ? ssid : "Not connected") : "Off", on: wifiOn, exp: true },
-            { id: "bt", glyph: "\uf293", title: "Bluetooth", sub: btOn ? "On" : "Off", on: btOn, exp: true },
-            { id: "air", glyph: "\uf072", title: "Airplane", sub: (!wifiOn && !btOn) ? "On" : "Off", on: !wifiOn && !btOn, exp: false }
+            { id: "wifi", glyph: "\uf1eb", title: "Wi-Fi", sub: wifiOn ? (current ? current.ssid : "Not connected") : "Off", on: wifiOn },
+            { id: "bt", glyph: "\uf293", title: "Bluetooth", sub: btOn ? btSummary() : "Off", on: btOn },
+            { id: "mic", glyph: micMuted ? "\uf131" : "\uf130", title: "Mic", sub: micMuted ? "Muted" : "Live", on: !micMuted },
+            { id: "air", glyph: "\uf072", title: "Airplane", sub: (!wifiOn && !btOn) ? "On" : "Off", on: !wifiOn && !btOn }
         ]
         if (profile !== "")
-            t.push({ id: "prof", glyph: "\uf0e7", title: "Power mode", sub: profileLabel(profile), on: profile !== "balanced", exp: false })
+            t.push({ id: "prof", glyph: "\uf0e7", title: "Power mode", sub: profileLabel(profile), on: profile !== "balanced" })
         return t
     }
 
     // ── Helpers ──
+    function hex(c) {
+        const h = v => ("0" + Math.round(v * 255).toString(16)).slice(-2)
+        return "#" + h(c.r) + h(c.g) + h(c.b)
+    }
+    function sigHtml(v) {
+        return '<span style="font-size:40px; font-weight:600; color:' + hex(Theme.accentHi) + ';">' + v + '</span>'
+             + '<span style="font-size:14px; color:' + hex(Theme.fgDim) + ';">%</span>'
+    }
     function profileLabel(p) {
         if (p === "power-saver") return "Saver"
         if (p === "performance") return "Performance"
         return "Balanced"
+    }
+    function btSummary() {
+        const c = btDevs.filter(d => d.connected)
+        if (c.length === 0) return "No device"
+        return c[0].name + (c.length > 1 ? " +" + (c.length - 1) : "")
     }
     function batGlyph() {
         if (batStatus === "Charging") return "\uf0e7"
@@ -78,42 +124,23 @@ Scope {
         if (bat > 12) return "\uf243"
         return "\uf244"
     }
-    function unesc(s) { return s.replace(/\\:/g, ":") }
 
     function parseStatus(text) {
-        let b = false, bt = false, pr = "", sid = ""
+        let b = false, bt = false, pr = ""
         for (const line of text.split("\n")) {
             const p = line.split("\t")
             if (p[0] === "VOL") { vol = parseInt(p[1]); muted = p[2] === "1" }
+            else if (p[0] === "MIC") { micMuted = p[1] === "1" }
             else if (p[0] === "BRI") { bri = parseInt(p[1]); b = true }
             else if (p[0] === "BAT") { bat = parseInt(p[1]); batStatus = p[2]; bt = true }
-            else if (p[0] === "WIFI") { wifiOn = p[1] === "enabled"; sid = unesc(p[2] || "") }
+            else if (p[0] === "WIFI") { wifiOn = p[1] === "enabled" }
             else if (p[0] === "BT") { btOn = p[1] === "yes" }
             else if (p[0] === "PROF") { pr = p[1] || "" }
         }
         hasBri = b
         hasBat = bt
         profile = pr
-        ssid = sid
-    }
-    function parseNets(text) {
-        const known = {}
-        const map = {}
-        for (const line of text.split("\n")) {
-            if (line.indexOf("KNOWN\t") === 0) {
-                known[unesc(line.slice(6))] = true
-            } else if (line.indexOf("NET\t") === 0) {
-                const f = line.slice(4).split(":")
-                const name = unesc(f.slice(3).join(":"))
-                if (name === "") continue
-                const sig = parseInt(f[1]) || 0
-                const active = f[0] === "*"
-                const sec = (f[2] === "--" ? "" : f[2])
-                if (!map[name] || active || sig > map[name].sig)
-                    map[name] = { ssid: name, sig: sig, active: active, secured: sec !== "", known: known[name] === true }
-            }
-        }
-        nets = Object.keys(map).map(k => map[k]).sort((a, b) => (b.active - a.active) || (b.sig - a.sig))
+        if (btNeeded) { btNeeded = false; btProc.running = true }
     }
     function parseBt(text) {
         const d = []
@@ -124,47 +151,76 @@ Scope {
         btDevs = d
     }
 
-    function refresh() { status.running = true }
+    function parseWifi(text) {
+        const byName = {}
+        for (const line of text.trim().split("\n")) {
+            if (!line) continue
+            const f = line.replace(/\\:/g, "\u0001").split(":").map(s => s.replace(/\u0001/g, ":"))
+            const ssid = f[1]
+            if (!ssid) continue
+            const strength = parseInt(f[2]) || 0
+            const freq = parseInt(f[4]) || 0
+            const row = byName[ssid] || (byName[ssid] = { active: false, ssid: ssid, strength: 0, security: f[3] || "", band: "" })
+            row.active = row.active || f[0] === "*"
+            if (strength >= row.strength) {
+                row.strength = strength
+                row.band = freq >= 5900 ? "6 GHz" : (freq >= 4900 ? "5 GHz" : (freq > 0 ? "2.4 GHz" : ""))
+            }
+        }
+        const rows = Object.values(byName)
+        rows.sort((a, b) => b.strength - a.strength)
+        current = rows.find(r => r.active) || null
+
+        // Don't rebuild the list while someone is typing a password
+        if (pendingSsid !== "") return
+        const others = rows.filter(r => !r.active)
+        let same = networks.count === others.length
+        if (same) for (let i = 0; i < others.length; i++) if (networks.get(i).ssid !== others[i].ssid) { same = false; break }
+        if (same) {
+            for (let i = 0; i < others.length; i++) networks.set(i, others[i])
+        } else {
+            networks.clear()
+            for (const r of others) networks.append(r)
+        }
+    }
+
+    function connectTo(ssid, secured, password) {
+        if (connector.running) return
+        badPassword = false
+        msg = "Connecting to " + ssid + "…"
+        connector.ssid = ssid
+        connector.secured = secured
+        connector.password = password
+        connector.running = true
+    }
+
+    function refresh() {
+        btNeeded = true
+        sysProc.running = true
+        scan.running = true
+        savedList.running = true
+    }
     function act(cmd) {
         Quickshell.execDetached(cmd)
         settle.restart()
     }
-    // After any action: wait a moment, then re-read the real state
-    Timer {
-        id: settle
-        interval: 1200
-        onTriggered: {
-            status.running = true
-            if (root.expanded === "wifi") netsProc.running = true
-            if (root.expanded === "bt") btProc.running = true
-        }
-    }
-    // Poll only while the panel is open
-    Timer {
-        interval: 4000
-        repeat: true
-        running: root.shown
-        onTriggered: if (!status.running) status.running = true
-    }
-    Timer {
-        id: armTimer
-        interval: 3000
-        onTriggered: root.armed = ""
-    }
-
     function setExpanded(which) {
         pendingSsid = ""
         expanded = (expanded === which) ? "" : which
-        if (expanded === "wifi") { rescan = false; netsProc.running = true }
+        if (expanded === "wifi") { scan.running = true; savedList.running = true }
         if (expanded === "bt") btProc.running = true
     }
     function tileClick(id) {
         if (id === "wifi") {
-            act(["nmcli", "radio", "wifi", wifiOn ? "off" : "on"])
+            radioSet.target = !wifiOn
             wifiOn = !wifiOn
+            radioSet.running = true
         } else if (id === "bt") {
             act(["bluetoothctl", "power", btOn ? "off" : "on"])
             btOn = !btOn
+        } else if (id === "mic") {
+            act(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])
+            micMuted = !micMuted
         } else if (id === "air") {
             act(["rfkill", (!wifiOn && !btOn) ? "unblock" : "block", "all"])
         } else if (id === "prof") {
@@ -172,19 +228,6 @@ Scope {
             act(["powerprofilesctl", "set", next])
             profile = next
         }
-    }
-    function pickNet(n) {
-        if (n.active) { act(["nmcli", "connection", "down", "id", n.ssid]); return }
-        if (n.known || !n.secured) {
-            act(n.known ? ["nmcli", "connection", "up", "id", n.ssid] : ["nmcli", "dev", "wifi", "connect", n.ssid])
-            return
-        }
-        pendingSsid = (pendingSsid === n.ssid) ? "" : n.ssid
-    }
-    function connectWith(name, pw) {
-        if (pw === "") return
-        act(["nmcli", "dev", "wifi", "connect", name, "password", pw])
-        pendingSsid = ""
     }
     function power(id) {
         if (armed !== id) { armed = id; armTimer.restart(); return }
@@ -204,47 +247,146 @@ Scope {
         }
     }
 
+    // ── Timers (all idle while the panel is closed) ──
+    Timer {
+        id: settle
+        interval: 1200
+        onTriggered: {
+            sysProc.running = true
+            if (root.wifiOn) scan.running = true
+            if (root.expanded === "bt" || root.btOn) btProc.running = true
+        }
+    }
+    Timer {
+        interval: 4000
+        repeat: true
+        running: root.shown
+        onTriggered: if (!sysProc.running) sysProc.running = true
+    }
+    Timer {
+        interval: 10000
+        repeat: true
+        running: root.shown && root.wifiOn && root.pendingSsid === ""
+        onTriggered: if (!scan.running) scan.running = true
+    }
+    Timer {
+        id: armTimer
+        interval: 3000
+        onTriggered: root.armed = ""
+    }
+
+    // ── Processes ──
     Process {
-        id: status
+        id: sysProc
         command: [root.report, "status"]
         stdout: StdioCollector { onStreamFinished: root.parseStatus(text) }
-    }
-    Process {
-        id: netsProc
-        command: [root.report, "wifi", root.rescan ? "yes" : "auto"]
-        stdout: StdioCollector {
-            onStreamFinished: { root.parseNets(text); root.rescan = false }
-        }
     }
     Process {
         id: btProc
         command: [root.report, "bt"]
         stdout: StdioCollector { onStreamFinished: root.parseBt(text) }
     }
+    Process {
+        id: scan
+        command: ["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY,FREQ", "device", "wifi", "list", "--rescan", "auto"]
+        stdout: StdioCollector { onStreamFinished: root.parseWifi(text) }
+    }
+    Process {
+        id: savedList
+        command: ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const s = {}
+                for (const line of text.trim().split("\n")) {
+                    if (!line) continue
+                    const f = line.replace(/\\:/g, "\u0001").split(":").map(x => x.replace(/\u0001/g, ":"))
+                    if ((f[1] || "").indexOf("wireless") >= 0) s[f[0]] = true
+                }
+                root.saved = s
+            }
+        }
+    }
+    Process {
+        id: radioSet
+        property bool target: true
+        command: ["nmcli", "radio", "wifi", target ? "on" : "off"]
+        onExited: root.refresh()
+    }
+    Process {
+        id: disconnector
+        property string ssid: ""
+        command: ["nmcli", "connection", "down", "id", ssid]
+        onExited: { root.msg = "Disconnected"; scan.running = true }
+    }
+    Process {
+        id: forgetter
+        property string ssid: ""
+        command: ["nmcli", "connection", "delete", "id", ssid]
+        onExited: { root.msg = "Forgot " + ssid; root.refresh() }
+    }
+    Process {
+        id: connector
+        property string ssid: ""
+        property string password: ""
+        property bool secured: false
+        command: password === ""
+            ? ["nmcli", "device", "wifi", "connect", ssid]
+            : ["nmcli", "device", "wifi", "connect", ssid, "password", password]
+        stderr: StdioCollector { id: connErr }
+        onExited: (code) => {
+            root.badPassword = false
+            if (code === 0) {
+                root.msg = "Connected to " + ssid
+                root.pendingSsid = ""
+                savedList.running = true
+            } else if (secured) {
+                root.pendingSsid = ssid
+                root.badPassword = password !== ""
+                root.msg = password === "" ? "Password needed" : "Wrong password?"
+            } else {
+                root.msg = connErr.text.trim() || "Connection failed"
+            }
+            scan.running = true
+        }
+    }
 
+    // ── The panel: layer-shell window pinned to the right edge ──
     LazyLoader {
         active: root.alive
 
-        FloatingWindow {
+        PanelWindow {
             id: win
-            visible: root.shown
-            title: "Quick Settings"
-            implicitWidth: 420
-            implicitHeight: 680
+            anchors { top: true; bottom: true; right: true }
+            margins { top: 12; bottom: 12; right: 12 }
+            implicitWidth: 430
+            exclusionMode: ExclusionMode.Ignore
             color: "transparent"
-            onVisibleChanged: if (!visible) root.shown = false
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.namespace: "quicksettings"
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+            // Only the card itself takes mouse input; the rest of the strip is click-through
+            mask: Region { item: card }
 
             Shortcut { sequence: "Escape"; onActivated: root.shown = false }
 
             ChamferPanel {
-                anchors.fill: parent
+                id: card
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
                 cut: 22
                 pattern: true
                 patternOpacity: 0.05
                 fillColor: Theme.panel
                 strokeColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
                 opacity: root.enter
-                transform: Translate { y: (1 - root.enter) * 14 }
+                transform: Translate { x: (1 - root.enter) * 56 }
+
+                // Card height follows its content, and glides when sections expand
+                readonly property real wanted: 44 + headerRow.implicitHeight + 2 + 28 + body.implicitHeight
+                property real h: Math.min(wanted, win.height)
+                Behavior on h { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+                height: h
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -253,31 +395,94 @@ Scope {
 
                     // ── Header ──
                     RowLayout {
+                        id: headerRow
                         Layout.fillWidth: true
                         spacing: 12
+                        opacity: root.lp(0, 7)
 
                         HexButton {
-                            size: 30
+                            Layout.preferredWidth: 32 * 1.1547
+                            Layout.preferredHeight: 32
+                            size: 32
                             glyph: "\uf013"
                             glyphSize: 13
                             outlined: true
                             interactive: false
                             tone: Theme.accentHi
                         }
-                        Text {
-                            text: "Quick Settings"
-                            color: Theme.fg
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 16
-                            font.weight: Font.DemiBold
+                        ColumnLayout {
+                            spacing: 0
+                            Text {
+                                text: "Quick Settings"
+                                color: Theme.fg
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 16
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: Qt.formatDateTime(clock.date, "ddd d MMM  ·  HH:mm")
+                                color: Theme.fgDim
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 10
+                            }
                         }
                         Item { Layout.fillWidth: true }
-                        Text {
+
+                        Rectangle {
                             visible: root.hasBat
-                            text: root.batGlyph() + "  " + root.bat + "%"
-                            color: root.batStatus === "Charging" ? Theme.accentHi : Theme.fg
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 14
+                            Layout.preferredHeight: 28
+                            Layout.preferredWidth: batRow.implicitWidth + 22
+                            radius: 14
+                            color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.7)
+                            border.width: 1
+                            border.color: Theme.line
+                            Row {
+                                id: batRow
+                                anchors.centerIn: parent
+                                spacing: 7
+                                Text {
+                                    text: root.batGlyph()
+                                    color: (root.bat <= 15 && root.batStatus !== "Charging") ? Theme.bad : Theme.accentHi
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: 12
+                                }
+                                Text {
+                                    text: root.bat + "%"
+                                    color: Theme.fg
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: 11
+                                }
+                            }
+                        }
+                        HexButton {
+                            Layout.preferredWidth: 28 * 1.1547
+                            Layout.preferredHeight: 28
+                            size: 28
+                            glyph: "\uf00d"
+                            glyphSize: 11
+                            outlined: true
+                            tone: Theme.accentHi
+                            onClicked: root.shown = false
+                        }
+                    }
+
+                    // Scanline that sweeps across once on open
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 2
+                        clip: true
+                        Rectangle { anchors.fill: parent; color: Theme.line; opacity: 0.6 }
+                        Rectangle {
+                            width: 140
+                            height: 2
+                            x: -140 + (parent.width + 140) * root.intro
+                            opacity: root.intro < 1 ? 1 : 0
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: Qt.rgba(Theme.accentHi.r, Theme.accentHi.g, Theme.accentHi.b, 0) }
+                                GradientStop { position: 0.5; color: Theme.accentHi }
+                                GradientStop { position: 1; color: Qt.rgba(Theme.accentHi.r, Theme.accentHi.g, Theme.accentHi.b, 0) }
+                            }
                         }
                     }
 
@@ -296,18 +501,19 @@ Scope {
                             width: flick.width
                             spacing: 14
 
-                            // Sliders
+                            // ── Sliders ──
                             ChamferPanel {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: sliders.implicitHeight + 28
                                 cut: 12
                                 fillColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.5)
                                 strokeColor: Theme.line
+                                opacity: root.lp(1, 7)
+                                transform: Translate { y: (1 - root.lp(1, 7)) * 16 }
 
                                 ColumnLayout {
                                     id: sliders
-                                    anchors.fill: parent
-                                    anchors.margins: 14
+                                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
                                     spacing: 8
 
                                     QsSliderRow {
@@ -323,7 +529,6 @@ Scope {
                                             root.act(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
                                         }
                                     }
-
                                     QsSliderRow {
                                         visible: root.hasBri
                                         glyph: "\uf185"
@@ -336,46 +541,566 @@ Scope {
                                 }
                             }
 
-                            // Toggle tiles
-                            GridLayout {
-                                Layout.fillWidth: true
-                                columns: 2
-                                rowSpacing: 10
-                                columnSpacing: 10
+                            // ── Honeycomb toggles ──
+                            Item {
+                                id: hive
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.topMargin: 4
+                                Layout.preferredWidth: root.hexW * (0.75 * (root.tiles.length - 1) + 1)
+                                Layout.preferredHeight: root.hexH * 1.5
 
                                 Repeater {
                                     model: root.tiles
 
-                                    ChamferPanel {
+                                    Item {
                                         id: tile
                                         required property var modelData
+                                        required property int index
+                                        width: root.hexW
+                                        height: root.hexH
+                                        x: index * root.hexW * 0.75
+                                        y: (index % 2) * root.hexH / 2
+                                        opacity: root.lp(index + 1, 8)
+                                        scale: tHit.pressed ? 0.93 : (tHit.containsMouse ? 1.07 : 1)
+                                        Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
+
+                                        // Soft pulse ring on active tiles
+                                        HexShape {
+                                            id: pulse
+                                            anchors.fill: parent
+                                            fillColor: Theme.accent
+                                            strokeWidth: 0
+                                            opacity: 0
+                                            visible: tile.modelData.on
+                                        }
+                                        SequentialAnimation {
+                                            running: tile.modelData.on && root.shown
+                                            loops: Animation.Infinite
+                                            ParallelAnimation {
+                                                NumberAnimation { target: pulse; property: "opacity"; from: 0.35; to: 0; duration: 1800; easing.type: Easing.OutQuad }
+                                                NumberAnimation { target: pulse; property: "scale"; from: 1; to: 1.3; duration: 1800; easing.type: Easing.OutQuad }
+                                            }
+                                            PauseAnimation { duration: 500 }
+                                        }
+
+                                        HexShape {
+                                            anchors.fill: parent
+                                            fillColor: tile.modelData.on ? Theme.accent : Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.85)
+                                            strokeColor: tile.modelData.on ? Theme.accentHi : Theme.line
+                                            strokeWidth: 1.5
+                                            Behavior on fillColor { ColorAnimation { duration: 180 } }
+                                        }
+
+                                        ColumnLayout {
+                                            anchors.centerIn: parent
+                                            spacing: 3
+                                            Text {
+                                                Layout.alignment: Qt.AlignHCenter
+                                                text: tile.modelData.glyph
+                                                color: tile.modelData.on ? Theme.accentText : Theme.accentHi
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: 22
+                                            }
+                                            Text {
+                                                Layout.alignment: Qt.AlignHCenter
+                                                text: tile.modelData.title
+                                                color: tile.modelData.on ? Theme.accentText : Theme.fgDim
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: 8
+                                                font.letterSpacing: 0.8
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            id: tHit
+                                            anchors.fill: parent
+                                            anchors.margins: 6
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onEntered: root.hoverTile = tile.index
+                                            onExited: if (root.hoverTile === tile.index) root.hoverTile = -1
+                                            onClicked: root.tileClick(tile.modelData.id)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Caption for the hovered hex
+                            Text {
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.preferredHeight: 14
+                                text: root.hoverTile >= 0 && root.hoverTile < root.tiles.length
+                                    ? root.tiles[root.hoverTile].title + "  ·  " + root.tiles[root.hoverTile].sub
+                                    : ""
+                                color: Theme.accentHi
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 10
+                                elide: Text.ElideRight
+                                Behavior on text { enabled: false }
+                            }
+
+                            // ── Wi-Fi card ──
+                            ChamferPanel {
+                                id: wifiCard
+                                Layout.fillWidth: true
+                                property real h: wifiCol.implicitHeight + 28
+                                Behavior on h { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                                Layout.preferredHeight: h
+                                clip: true
+                                cut: 14
+                                fillColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.6)
+                                strokeColor: (root.wifiOn && root.current)
+                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
+                                    : Theme.line
+                                opacity: root.lp(5, 7)
+                                transform: Translate { y: (1 - root.lp(5, 7)) * 16 }
+
+                                ColumnLayout {
+                                    id: wifiCol
+                                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
+                                    spacing: 10
+
+                                    // Hero
+                                    Item {
                                         Layout.fillWidth: true
-                                        Layout.preferredWidth: 1
-                                        Layout.preferredHeight: 66
-                                        cut: 10
-                                        fillColor: modelData.on
-                                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
-                                            : Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.6)
-                                        strokeColor: modelData.on
-                                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6)
-                                            : Theme.line
+                                        Layout.preferredHeight: 84
 
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.tileClick(tile.modelData.id)
+                                            onClicked: root.setExpanded("wifi")
                                         }
 
                                         RowLayout {
                                             anchors.fill: parent
-                                            anchors.margins: 12
-                                            spacing: 10
+                                            spacing: 14
+
+                                            Row {
+                                                Layout.alignment: Qt.AlignVCenter
+                                                spacing: 4
+                                                Repeater {
+                                                    model: 4
+                                                    Rectangle {
+                                                        required property int index
+                                                        width: 7
+                                                        height: (10 + index * 7) * root.lp(index, 5)
+                                                        anchors.bottom: parent.bottom
+                                                        radius: 3
+                                                        color: (root.wifiOn && root.current && root.current.strength > index * 25)
+                                                               ? Theme.accent : Qt.rgba(1, 1, 1, 0.12)
+                                                    }
+                                                }
+                                            }
+
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 1
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: !root.wifiOn ? "Wi-Fi is off" : (root.current ? root.current.ssid : "Not connected")
+                                                    color: Theme.fg
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.pixelSize: 14
+                                                    font.weight: Font.DemiBold
+                                                    elide: Text.ElideRight
+                                                }
+                                                Text {
+                                                    visible: root.wifiOn && root.current !== null
+                                                    textFormat: Text.RichText
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    text: root.current ? root.sigHtml(Math.round(root.current.strength * root.intro)) : ""
+                                                }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: !root.wifiOn ? "Tap the hex to turn on"
+                                                        : (root.current
+                                                            ? (root.current.band + (root.current.band !== "" ? " · " : "")
+                                                               + (root.current.security !== "" ? "Secured" : "Open"))
+                                                            : "Tap to pick a network")
+                                                    color: Theme.fgDim
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.pixelSize: 10
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                visible: root.wifiOn && root.current !== null
+                                                Layout.alignment: Qt.AlignVCenter
+                                                Layout.preferredWidth: dcText.implicitWidth + 22
+                                                Layout.preferredHeight: 28
+                                                radius: 14
+                                                color: dcHit.containsMouse ? Qt.rgba(Theme.bad.r, Theme.bad.g, Theme.bad.b, 0.25) : Qt.rgba(1, 1, 1, 0.06)
+                                                border.width: 1
+                                                border.color: dcHit.containsMouse ? Theme.bad : Theme.line
+                                                Text {
+                                                    id: dcText
+                                                    anchors.centerIn: parent
+                                                    text: "Disconnect"
+                                                    color: dcHit.containsMouse ? Theme.bad : Theme.fgDim
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.pixelSize: 9
+                                                }
+                                                MouseArea {
+                                                    id: dcHit
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        disconnector.ssid = root.current.ssid
+                                                        disconnector.running = true
+                                                    }
+                                                }
+                                            }
+
+                                            Text {
+                                                Layout.alignment: Qt.AlignVCenter
+                                                text: "\uf078"
+                                                color: Theme.fgDim
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: 11
+                                                rotation: root.expanded === "wifi" ? 180 : 0
+                                                Behavior on rotation { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                                            }
+                                        }
+                                    }
+
+                                    // Expanded: status, scan sweep, network list
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        visible: root.expanded === "wifi"
+                                        spacing: 8
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            visible: root.msg !== "" && root.wifiOn
+                                            text: root.msg
+                                            color: root.badPassword ? Theme.bad : Theme.fgDim
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: 10
+                                            elide: Text.ElideRight
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            visible: root.wifiOn
+                                            Text {
+                                                text: "AVAILABLE"
+                                                color: Theme.fgDim
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: 9
+                                                font.letterSpacing: 1.6
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                            Text {
+                                                text: scan.running ? "scanning…" : networks.count + " found"
+                                                color: Theme.fgDim
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: 9
+                                            }
+                                            HexButton {
+                                                Layout.preferredWidth: 22 * 1.1547
+                                                Layout.preferredHeight: 22
+                                                size: 22
+                                                glyph: "\uf021"
+                                                glyphSize: 9
+                                                outlined: true
+                                                tone: Theme.accentHi
+                                                onClicked: { scan.running = true; savedList.running = true }
+                                            }
+                                        }
+
+                                        // Sweeping bar while a scan runs
+                                        Item {
+                                            id: sweepHost
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 2
+                                            clip: true
+                                            visible: root.wifiOn
+                                            Rectangle { anchors.fill: parent; color: Theme.line; opacity: 0.5 }
+                                            Rectangle {
+                                                visible: scan.running
+                                                width: 90
+                                                height: 2
+                                                gradient: Gradient {
+                                                    orientation: Gradient.Horizontal
+                                                    GradientStop { position: 0; color: Qt.rgba(Theme.accentHi.r, Theme.accentHi.g, Theme.accentHi.b, 0) }
+                                                    GradientStop { position: 0.5; color: Theme.accentHi }
+                                                    GradientStop { position: 1; color: Qt.rgba(Theme.accentHi.r, Theme.accentHi.g, Theme.accentHi.b, 0) }
+                                                }
+                                                NumberAnimation on x {
+                                                    running: scan.running
+                                                    loops: Animation.Infinite
+                                                    from: -90
+                                                    to: sweepHost.width
+                                                    duration: 1000
+                                                }
+                                            }
+                                        }
+
+                                        Repeater {
+                                            model: root.wifiOn ? networks : null
+
+                                            Item {
+                                                id: row
+                                                required property int index
+                                                required property string ssid
+                                                required property int strength
+                                                required property string security
+                                                required property string band
+
+                                                readonly property bool pending: root.pendingSsid === ssid
+                                                readonly property bool isSaved: root.saved[ssid] === true
+                                                property bool reveal: false
+                                                property real h: 50 + (pending ? 54 : 0)
+                                                Behavior on h { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: h
+                                                clip: true
+                                                opacity: 0
+                                                transform: Translate { id: rowTr; x: 28 }
+
+                                                SequentialAnimation {
+                                                    running: true
+                                                    PauseAnimation { duration: Math.min(row.index, 8) * 40 }
+                                                    ParallelAnimation {
+                                                        NumberAnimation { target: row; property: "opacity"; from: 0; to: 1; duration: 240 }
+                                                        NumberAnimation { target: rowTr; property: "x"; from: 28; to: 0; duration: 300; easing.type: Easing.OutCubic }
+                                                    }
+                                                }
+
+                                                onPendingChanged: if (pending) { reveal = false; pw.text = ""; pw.forceActiveFocus() }
+
+                                                ChamferPanel {
+                                                    anchors.fill: parent
+                                                    cut: 10
+                                                    fillColor: hit.containsMouse || row.pending ? Theme.surface : Qt.rgba(1, 1, 1, 0.04)
+                                                    strokeColor: row.pending ? (root.badPassword ? Theme.bad : Theme.accent) : "transparent"
+                                                }
+
+                                                Item {
+                                                    width: parent.width
+                                                    height: 50
+
+                                                    MouseArea {
+                                                        id: hit
+                                                        anchors.fill: parent
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: {
+                                                            if (row.pending) root.pendingSsid = ""
+                                                            else if (row.isSaved || row.security === "") root.connectTo(row.ssid, row.security !== "", "")
+                                                            else root.pendingSsid = row.ssid
+                                                        }
+                                                    }
+
+                                                    RowLayout {
+                                                        anchors.fill: parent
+                                                        anchors.leftMargin: 14
+                                                        anchors.rightMargin: 12
+                                                        spacing: 12
+
+                                                        Row {
+                                                            Layout.alignment: Qt.AlignVCenter
+                                                            spacing: 2
+                                                            Repeater {
+                                                                model: 4
+                                                                Rectangle {
+                                                                    required property int index
+                                                                    width: 4
+                                                                    height: 6 + index * 4
+                                                                    anchors.bottom: parent.bottom
+                                                                    radius: 2
+                                                                    color: row.strength > index * 25
+                                                                           ? (row.strength >= 50 ? Theme.accent : Theme.fgDim)
+                                                                           : Qt.rgba(1, 1, 1, 0.12)
+                                                                }
+                                                            }
+                                                        }
+
+                                                        ColumnLayout {
+                                                            Layout.fillWidth: true
+                                                            spacing: 0
+                                                            Text {
+                                                                Layout.fillWidth: true
+                                                                text: row.ssid
+                                                                color: Theme.fg
+                                                                font.family: "JetBrainsMono Nerd Font"
+                                                                font.pixelSize: 12
+                                                                elide: Text.ElideRight
+                                                            }
+                                                            Text {
+                                                                Layout.fillWidth: true
+                                                                text: (row.isSaved ? "saved · " : "") + (row.security !== "" ? "secured" : "open")
+                                                                      + (row.band !== "" ? " · " + row.band : "")
+                                                                color: row.isSaved ? Theme.accent : Theme.fgDim
+                                                                font.family: "JetBrainsMono Nerd Font"
+                                                                font.pixelSize: 9
+                                                                elide: Text.ElideRight
+                                                            }
+                                                        }
+
+                                                        Text {
+                                                            visible: row.security !== ""
+                                                            text: "\uf023"
+                                                            color: Theme.fgDim
+                                                            font.family: "JetBrainsMono Nerd Font"
+                                                            font.pixelSize: 11
+                                                        }
+                                                        Text {
+                                                            visible: row.isSaved
+                                                            text: "\uf1f8"
+                                                            color: forgetHit.containsMouse ? Theme.bad : Theme.fgDim
+                                                            font.family: "JetBrainsMono Nerd Font"
+                                                            font.pixelSize: 12
+                                                            MouseArea {
+                                                                id: forgetHit
+                                                                anchors.fill: parent
+                                                                anchors.margins: -8
+                                                                hoverEnabled: true
+                                                                cursorShape: Qt.PointingHandCursor
+                                                                onClicked: {
+                                                                    forgetter.ssid = row.ssid
+                                                                    forgetter.running = true
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                // Inline password field
+                                                Rectangle {
+                                                    visible: row.pending
+                                                    x: 10
+                                                    y: 52
+                                                    width: parent.width - 20
+                                                    height: 38
+                                                    radius: 12
+                                                    color: Qt.rgba(Theme.surfaceHi.r, Theme.surfaceHi.g, Theme.surfaceHi.b, 0.7)
+                                                    border.width: 1
+                                                    border.color: root.badPassword ? Theme.bad : Theme.accent
+
+                                                    Text {
+                                                        anchors.left: parent.left
+                                                        anchors.leftMargin: 14
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        text: "Password"
+                                                        color: Theme.fgDim
+                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.pixelSize: 12
+                                                        visible: pw.text === ""
+                                                    }
+                                                    TextInput {
+                                                        id: pw
+                                                        anchors.left: parent.left
+                                                        anchors.right: eye.left
+                                                        anchors.leftMargin: 14
+                                                        anchors.rightMargin: 8
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        echoMode: row.reveal ? TextInput.Normal : TextInput.Password
+                                                        color: Theme.fg
+                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.pixelSize: 12
+                                                        clip: true
+                                                        onAccepted: root.connectTo(row.ssid, true, text)
+                                                        Keys.onEscapePressed: root.pendingSsid = ""
+                                                    }
+                                                    Text {
+                                                        id: eye
+                                                        anchors.right: joinBtn.left
+                                                        anchors.rightMargin: 10
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        text: row.reveal ? "\uf070" : "\uf06e"
+                                                        color: Theme.fgDim
+                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.pixelSize: 12
+                                                        MouseArea {
+                                                            anchors.fill: parent
+                                                            anchors.margins: -6
+                                                            cursorShape: Qt.PointingHandCursor
+                                                            onClicked: row.reveal = !row.reveal
+                                                        }
+                                                    }
+                                                    Rectangle {
+                                                        id: joinBtn
+                                                        anchors.right: parent.right
+                                                        anchors.rightMargin: 5
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: 50
+                                                        height: 28
+                                                        radius: 9
+                                                        color: Theme.accent
+                                                        Text {
+                                                            anchors.centerIn: parent
+                                                            text: "Join"
+                                                            color: Theme.accentText
+                                                            font.family: "JetBrainsMono Nerd Font"
+                                                            font.pixelSize: 11
+                                                            font.weight: Font.DemiBold
+                                                        }
+                                                        MouseArea {
+                                                            anchors.fill: parent
+                                                            cursorShape: Qt.PointingHandCursor
+                                                            onClicked: root.connectTo(row.ssid, true, pw.text)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            visible: root.wifiOn && networks.count === 0 && !scan.running
+                                            text: "No other networks found"
+                                            color: Theme.fgDim
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: 11
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ── Bluetooth card ──
+                            ChamferPanel {
+                                id: btCard
+                                Layout.fillWidth: true
+                                property real h: btCol.implicitHeight + 28
+                                Behavior on h { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                                Layout.preferredHeight: h
+                                clip: true
+                                cut: 14
+                                fillColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.6)
+                                strokeColor: root.btOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55) : Theme.line
+                                opacity: root.lp(6, 7)
+                                transform: Translate { y: (1 - root.lp(6, 7)) * 16 }
+
+                                ColumnLayout {
+                                    id: btCol
+                                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
+                                    spacing: 10
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 44
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.setExpanded("bt")
+                                        }
+
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            spacing: 12
 
                                             HexButton {
+                                                Layout.preferredWidth: 34 * 1.1547
+                                                Layout.preferredHeight: 34
                                                 size: 34
-                                                glyph: tile.modelData.glyph
+                                                glyph: "\uf293"
                                                 glyphSize: 14
-                                                outlined: !tile.modelData.on
+                                                outlined: !root.btOn
                                                 interactive: false
                                                 tone: Theme.accentHi
                                             }
@@ -383,170 +1108,96 @@ Scope {
                                                 Layout.fillWidth: true
                                                 spacing: 1
                                                 Text {
-                                                    text: tile.modelData.title
+                                                    text: "Bluetooth"
                                                     color: Theme.fg
-                                                    font.pixelSize: 12
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.pixelSize: 13
                                                     font.weight: Font.DemiBold
                                                 }
                                                 Text {
                                                     Layout.fillWidth: true
-                                                    text: tile.modelData.sub
+                                                    text: root.btOn ? root.btSummary() : "Off"
                                                     color: Theme.fgDim
                                                     font.family: "JetBrainsMono Nerd Font"
                                                     font.pixelSize: 10
                                                     elide: Text.ElideRight
                                                 }
                                             }
-                                            HexButton {
-                                                visible: tile.modelData.exp
-                                                size: 24
-                                                glyph: root.expanded === tile.modelData.id ? "\uf077" : "\uf078"
-                                                glyphSize: 9
-                                                outlined: true
-                                                tone: Theme.fgDim
-                                                onClicked: root.setExpanded(tile.modelData.id)
+                                            Text {
+                                                text: "\uf078"
+                                                color: Theme.fgDim
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: 11
+                                                rotation: root.expanded === "bt" ? 180 : 0
+                                                Behavior on rotation { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
                                             }
                                         }
                                     }
-                                }
-                            }
 
-                            // ── Wi-Fi list ──
-                            ChamferPanel {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: wifiCol.implicitHeight + 28
-                                visible: root.expanded === "wifi"
-                                cut: 12
-                                fillColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.5)
-                                strokeColor: Theme.line
-
-                                ColumnLayout {
-                                    id: wifiCol
-                                    anchors.fill: parent
-                                    anchors.margins: 14
-                                    spacing: 6
-
-                                    RowLayout {
+                                    ColumnLayout {
                                         Layout.fillWidth: true
+                                        visible: root.expanded === "bt"
+                                        spacing: 6
+
                                         Text {
-                                            text: "Networks"
-                                            color: Theme.fg
+                                            visible: root.btDevs.length === 0
+                                            text: root.btOn ? "No paired devices" : "Bluetooth is off"
+                                            color: Theme.fgDim
                                             font.family: "JetBrainsMono Nerd Font"
-                                            font.pixelSize: 12
-                                            font.weight: Font.DemiBold
+                                            font.pixelSize: 11
                                         }
-                                        Item { Layout.fillWidth: true }
-                                        HexButton {
-                                            size: 24
-                                            glyph: "\uf021"
-                                            glyphSize: 9
-                                            outlined: true
-                                            tone: Theme.accentHi
-                                            onClicked: { root.rescan = true; netsProc.running = true }
-                                        }
-                                    }
 
-                                    Text {
-                                        visible: root.nets.length === 0
-                                        text: root.wifiOn ? "No networks found." : "Wi-Fi is off."
-                                        color: Theme.fgDim
-                                        font.pixelSize: 11
-                                    }
-
-                                    Repeater {
-                                        model: root.nets.slice(0, 8)
-
-                                        ColumnLayout {
-                                            id: nrow
-                                            required property var modelData
-                                            Layout.fillWidth: true
-                                            spacing: 4
+                                        Repeater {
+                                            model: root.btOn ? root.btDevs : []
 
                                             Rectangle {
+                                                id: drow
+                                                required property var modelData
+                                                required property int index
                                                 Layout.fillWidth: true
-                                                Layout.preferredHeight: 34
+                                                Layout.preferredHeight: 38
                                                 radius: 10
-                                                color: nrow.modelData.active
+                                                opacity: 0
+                                                transform: Translate { id: dTr; x: 28 }
+                                                color: modelData.connected
                                                     ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
-                                                    : (nHit.containsMouse ? Qt.rgba(Theme.surfaceHi.r, Theme.surfaceHi.g, Theme.surfaceHi.b, 0.6) : "transparent")
+                                                    : (dHit.containsMouse ? Theme.surface : Qt.rgba(1, 1, 1, 0.04))
+
+                                                SequentialAnimation {
+                                                    running: true
+                                                    PauseAnimation { duration: Math.min(drow.index, 8) * 40 }
+                                                    ParallelAnimation {
+                                                        NumberAnimation { target: drow; property: "opacity"; from: 0; to: 1; duration: 240 }
+                                                        NumberAnimation { target: dTr; property: "x"; from: 28; to: 0; duration: 300; easing.type: Easing.OutCubic }
+                                                    }
+                                                }
 
                                                 RowLayout {
                                                     anchors.fill: parent
-                                                    anchors.leftMargin: 10
-                                                    anchors.rightMargin: 10
+                                                    anchors.leftMargin: 14
+                                                    anchors.rightMargin: 14
                                                     spacing: 8
-
                                                     Text {
                                                         Layout.fillWidth: true
-                                                        text: nrow.modelData.ssid
-                                                        color: nrow.modelData.active ? Theme.accentHi : Theme.fg
+                                                        text: drow.modelData.name
+                                                        color: drow.modelData.connected ? Theme.accentHi : Theme.fg
+                                                        font.family: "JetBrainsMono Nerd Font"
                                                         font.pixelSize: 12
                                                         elide: Text.ElideRight
                                                     }
                                                     Text {
-                                                        visible: nrow.modelData.active
-                                                        text: "\uf00c"
-                                                        color: Theme.accentHi
-                                                        font.family: "JetBrainsMono Nerd Font"
-                                                        font.pixelSize: 11
-                                                    }
-                                                    Text {
-                                                        visible: nrow.modelData.secured
-                                                        text: "\uf023"
+                                                        text: drow.modelData.connected ? "connected" : "tap to connect"
                                                         color: Theme.fgDim
                                                         font.family: "JetBrainsMono Nerd Font"
-                                                        font.pixelSize: 10
-                                                    }
-                                                    Text {
-                                                        text: nrow.modelData.sig + "%"
-                                                        color: Theme.fgDim
-                                                        font.family: "JetBrainsMono Nerd Font"
-                                                        font.pixelSize: 10
-                                                        horizontalAlignment: Text.AlignRight
-                                                        Layout.preferredWidth: 34
+                                                        font.pixelSize: 9
                                                     }
                                                 }
                                                 MouseArea {
-                                                    id: nHit
+                                                    id: dHit
                                                     anchors.fill: parent
                                                     hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
-                                                    onClicked: root.pickNet(nrow.modelData)
-                                                }
-                                            }
-
-                                            // Password prompt (only for new secured networks)
-                                            Rectangle {
-                                                Layout.fillWidth: true
-                                                Layout.preferredHeight: 34
-                                                visible: root.pendingSsid === nrow.modelData.ssid
-                                                radius: 10
-                                                color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.8)
-                                                border.width: 1
-                                                border.color: Theme.accent
-
-                                                TextInput {
-                                                    id: pw
-                                                    anchors.fill: parent
-                                                    anchors.leftMargin: 12
-                                                    anchors.rightMargin: 12
-                                                    verticalAlignment: TextInput.AlignVCenter
-                                                    echoMode: TextInput.Password
-                                                    color: Theme.fg
-                                                    font.pixelSize: 12
-                                                    clip: true
-                                                    onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
-                                                    Keys.onReturnPressed: root.connectWith(nrow.modelData.ssid, text)
-                                                    Keys.onEnterPressed: root.connectWith(nrow.modelData.ssid, text)
-                                                }
-                                                Text {
-                                                    visible: pw.text === ""
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                    anchors.left: parent.left
-                                                    anchors.leftMargin: 12
-                                                    text: "Password, then Enter"
-                                                    color: Theme.fgDim
-                                                    font.pixelSize: 11
+                                                    onClicked: root.act(["bluetoothctl", drow.modelData.connected ? "disconnect" : "connect", drow.modelData.mac])
                                                 }
                                             }
                                         }
@@ -554,84 +1205,12 @@ Scope {
                                 }
                             }
 
-                            // ── Bluetooth list ──
-                            ChamferPanel {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: btCol.implicitHeight + 28
-                                visible: root.expanded === "bt"
-                                cut: 12
-                                fillColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.5)
-                                strokeColor: Theme.line
-
-                                ColumnLayout {
-                                    id: btCol
-                                    anchors.fill: parent
-                                    anchors.margins: 14
-                                    spacing: 6
-
-                                    Text {
-                                        text: "Paired devices"
-                                        color: Theme.fg
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: 12
-                                        font.weight: Font.DemiBold
-                                    }
-                                    Text {
-                                        visible: root.btDevs.length === 0
-                                        text: root.btOn ? "No paired devices." : "Bluetooth is off."
-                                        color: Theme.fgDim
-                                        font.pixelSize: 11
-                                    }
-
-                                    Repeater {
-                                        model: root.btDevs
-
-                                        Rectangle {
-                                            id: drow
-                                            required property var modelData
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: 34
-                                            radius: 10
-                                            color: modelData.connected
-                                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
-                                                : (dHit.containsMouse ? Qt.rgba(Theme.surfaceHi.r, Theme.surfaceHi.g, Theme.surfaceHi.b, 0.6) : "transparent")
-
-                                            RowLayout {
-                                                anchors.fill: parent
-                                                anchors.leftMargin: 10
-                                                anchors.rightMargin: 10
-                                                spacing: 8
-                                                Text {
-                                                    Layout.fillWidth: true
-                                                    text: drow.modelData.name
-                                                    color: drow.modelData.connected ? Theme.accentHi : Theme.fg
-                                                    font.pixelSize: 12
-                                                    elide: Text.ElideRight
-                                                }
-                                                Text {
-                                                    text: drow.modelData.connected ? "Connected" : "Tap to connect"
-                                                    color: Theme.fgDim
-                                                    font.family: "JetBrainsMono Nerd Font"
-                                                    font.pixelSize: 9
-                                                }
-                                            }
-                                            MouseArea {
-                                                id: dHit
-                                                anchors.fill: parent
-                                                hoverEnabled: true
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: root.act(["bluetoothctl", drow.modelData.connected ? "disconnect" : "connect", drow.modelData.mac])
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // ── Power row (tap twice to confirm) ──
+                            // ── Power row (tap twice) ──
                             RowLayout {
                                 Layout.fillWidth: true
                                 Layout.topMargin: 4
                                 spacing: 10
+                                opacity: root.lp(6, 7)
 
                                 Repeater {
                                     model: [
@@ -650,11 +1229,15 @@ Scope {
 
                                         HexButton {
                                             Layout.alignment: Qt.AlignHCenter
+                                            Layout.preferredWidth: 38 * 1.1547
+                                            Layout.preferredHeight: 38
                                             size: 38
                                             glyph: pb.modelData.glyph
                                             glyphSize: 14
                                             outlined: root.armed !== pb.modelData.id
                                             tone: Theme.accentHi
+                                            scale: root.armed === pb.modelData.id ? 1.15 : 1
+                                            Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
                                             onClicked: root.power(pb.modelData.id)
                                         }
                                         Text {
@@ -668,7 +1251,7 @@ Scope {
                                 }
                             }
 
-                            Item { Layout.preferredHeight: 4 }
+                            Item { Layout.preferredHeight: 2 }
                         }
                     }
                 }
