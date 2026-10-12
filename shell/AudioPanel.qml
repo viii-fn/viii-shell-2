@@ -1,6 +1,6 @@
 // File: ~/viii-shell-2/shell/AudioPanel.qml
-// Audio output picker, restyled as a hive. Same logic as before. The window is
-// created on the first toggle and destroyed shortly after it closes.
+// Audio output picker, glass style. The window is created on the first toggle
+// and destroyed shortly after it closes.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -64,7 +64,7 @@ Scope {
             title: "Audio Output"
             color: "transparent"
             visible: true
-            implicitWidth: 400
+            implicitWidth: 420
             implicitHeight: col.implicitHeight + 48
 
             // 0 = hidden, 1 = open. Starts at 0 and fades in once created.
@@ -78,11 +78,25 @@ Scope {
 
             Shortcut { sequence: "Escape"; onActivated: root.shown = false }
 
-            ChamferPanel {
+            // Glass body
+            Rectangle {
                 anchors.fill: parent
-                cut: 16
-                pattern: true
+                radius: 28
+                color: Qt.alpha(Theme.panel, 0.82)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.16)
                 opacity: w.appear
+
+                // Specular sheen across the top
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    radius: parent.radius - 1
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.10) }
+                        GradientStop { position: 0.3; color: Qt.rgba(1, 1, 1, 0.0) }
+                    }
+                }
 
                 ColumnLayout {
                     id: col
@@ -92,21 +106,12 @@ Scope {
                     anchors.margins: 24
                     spacing: 10
 
-                    RowLayout {
-                        spacing: 8
-                        HexShape {
-                            Layout.preferredWidth: 12
-                            Layout.preferredHeight: 12 / 1.1547
-                            Layout.alignment: Qt.AlignVCenter
-                            fillColor: Theme.accent
-                        }
-                        Text {
-                            text: "OUTPUT"
-                            color: Theme.fgDim
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 12
-                            font.letterSpacing: 4
-                        }
+                    Text {
+                        text: "Output"
+                        color: Theme.fg
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: 18
+                        font.weight: Font.DemiBold
                     }
 
                     // Main switch: speakers/headphones vs TV.
@@ -116,32 +121,34 @@ Scope {
 
                         Repeater {
                             model: [
-                                { label: "Speakers / headphones", glyph: "\uf025", profile: "output:analog-stereo+input:analog-stereo", hdmi: false },
-                                { label: "HDMI (TV)",             glyph: "\uf26c", profile: "output:hdmi-stereo+input:analog-stereo",   hdmi: true }
+                                { label: "Speakers", glyph: "\uf025", profile: "output:analog-stereo+input:analog-stereo", hdmi: false },
+                                { label: "TV (HDMI)", glyph: "\uf26c", profile: "output:hdmi-stereo+input:analog-stereo",   hdmi: true }
                             ]
 
-                            delegate: ChamferPanel {
+                            delegate: Glass {
                                 id: btn
                                 required property var modelData
                                 readonly property bool active: root.onHdmi === modelData.hdmi
 
                                 Layout.fillWidth: true
+                                Layout.preferredWidth: 1      // both buttons get equal width
                                 Layout.preferredHeight: 52
-                                cut: 10
-                                fillColor: active ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
-                                                  : (btnHover.containsMouse ? Qt.rgba(1, 1, 1, 0.08)
-                                                                            : Qt.rgba(1, 1, 1, 0.04))
-                                strokeColor: active ? Theme.accent : Theme.line
+                                radius: 18
+                                color: active ? Qt.alpha(Theme.accent, 0.20)
+                                              : (btnHover.containsMouse ? Qt.rgba(1, 1, 1, 0.10)
+                                                                        : Qt.rgba(1, 1, 1, 0.05))
+                                border.color: active ? Theme.accent : Qt.rgba(1, 1, 1, 0.10)
+                                Behavior on color { ColorAnimation { duration: 120 } }
 
                                 Row {
                                     anchors.centerIn: parent
-                                    spacing: 8
-                                    HexButton {
+                                    spacing: 10
+                                    Text {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        size: 24; glyphSize: 11
-                                        outlined: true; interactive: false
-                                        tone: btn.active ? Theme.accentHi : Theme.fgDim
-                                        glyph: btn.modelData.glyph
+                                        text: btn.modelData.glyph
+                                        color: btn.active ? Theme.accentHi : Theme.fgDim
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: 14
                                     }
                                     Text {
                                         anchors.verticalCenter: parent.verticalCenter
@@ -149,6 +156,7 @@ Scope {
                                         color: btn.active ? Theme.accentHi : Theme.fg
                                         font.family: "JetBrainsMono Nerd Font"
                                         font.pixelSize: 12
+                                        font.weight: btn.active ? Font.DemiBold : Font.Normal
                                     }
                                 }
 
@@ -167,7 +175,7 @@ Scope {
                     Repeater {
                         model: root.sinks
 
-                        delegate: ChamferPanel {
+                        delegate: Glass {
                             id: row
                             required property var modelData
                             readonly property bool active:
@@ -175,9 +183,10 @@ Scope {
 
                             Layout.fillWidth: true
                             Layout.preferredHeight: 42
-                            cut: 8
-                            fillColor: hover.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(1, 1, 1, 0.04)
-                            strokeColor: active ? Theme.accent : Theme.line
+                            radius: 14
+                            color: hover.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(1, 1, 1, 0.05)
+                            border.color: active ? Theme.accent : Qt.rgba(1, 1, 1, 0.10)
+                            Behavior on color { ColorAnimation { duration: 120 } }
 
                             RowLayout {
                                 anchors.fill: parent
@@ -185,14 +194,15 @@ Scope {
                                 anchors.rightMargin: 14
                                 spacing: 10
 
-                                // hexagon marker: filled when this is the active output
-                                HexShape {
-                                    Layout.preferredWidth: 14
-                                    Layout.preferredHeight: 14 / 1.1547
+                                // dot: filled when this is the active output
+                                Rectangle {
+                                    Layout.preferredWidth: 10
+                                    Layout.preferredHeight: 10
                                     Layout.alignment: Qt.AlignVCenter
-                                    fillColor: row.active ? Theme.accent : "transparent"
-                                    strokeColor: row.active ? Theme.accent : Theme.fgDim
-                                    strokeWidth: 1
+                                    radius: 5
+                                    color: row.active ? Theme.accent : "transparent"
+                                    border.width: 1
+                                    border.color: row.active ? Theme.accent : Theme.fgDim
                                 }
 
                                 Text {
@@ -216,15 +226,34 @@ Scope {
                     }
 
                     // Volume for whichever output is currently the default.
-                    HexSlider {
+                    RowLayout {
                         Layout.fillWidth: true
-                        Layout.topMargin: 8
+                        Layout.topMargin: 6
+                        spacing: 10
                         visible: root.current !== null && root.current.audio !== null
-                        value: root.current && root.current.audio ? root.current.audio.volume : 0
-                        tone: root.current && root.current.audio && root.current.audio.muted ? Theme.fgDim : Theme.accent
-                        onMoved: v => {
-                            if (root.current && root.current.audio)
-                                root.current.audio.volume = v
+
+                        Text {
+                            text: "\uf028"
+                            color: root.current && root.current.audio && root.current.audio.muted ? Theme.fgDim : Theme.fg
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 14
+                        }
+                        GlassSlider {
+                            Layout.fillWidth: true
+                            value: root.current && root.current.audio ? root.current.audio.volume : 0
+                            tone: root.current && root.current.audio && root.current.audio.muted ? Theme.fgDim : Theme.accent
+                            onMoved: v => {
+                                if (root.current && root.current.audio)
+                                    root.current.audio.volume = v
+                            }
+                        }
+                        Text {
+                            Layout.preferredWidth: 36
+                            horizontalAlignment: Text.AlignRight
+                            text: Math.round((root.current && root.current.audio ? root.current.audio.volume : 0) * 100) + "%"
+                            color: Theme.fgDim
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 11
                         }
                     }
                 }

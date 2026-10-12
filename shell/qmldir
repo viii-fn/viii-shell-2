@@ -1,5 +1,6 @@
 singleton Theme Theme.qml
 AudioPanel AudioPanel.qml
+GlassSlider GlassSlider.qml
 ChamferPanel ChamferPanel.qml
 DpiPanel DpiPanel.qml
 DpiWindow DpiWindow.qml

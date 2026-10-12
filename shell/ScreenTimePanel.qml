@@ -292,16 +292,11 @@ Scope {
             // Glass body
             Rectangle {
                 anchors.fill: parent
-                radius: 28
                 color: Qt.alpha(Theme.panel, 0.82)
-                border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.16)
 
                 // Specular sheen across the top
                 Rectangle {
                     anchors.fill: parent
-                    anchors.margins: 1
-                    radius: parent.radius - 1
                     gradient: Gradient {
                         GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.10) }
                         GradientStop { position: 0.25; color: Qt.rgba(1, 1, 1, 0.0) }
