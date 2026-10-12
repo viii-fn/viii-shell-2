@@ -39,64 +39,6 @@ Scope {
         precision: SystemClock.Minutes
     }
 
-    // --- Reusable pieces (self-contained: they only need Theme) ------------
-    // A glass card: translucent surface + a thin light edge.
-    component Glass: Rectangle {
-        radius: 16
-        color: Qt.alpha(Theme.surface, 0.55)
-        border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.10)
-    }
-
-    // A round icon button.
-    component IconBtn: Rectangle {
-        id: b
-        property string glyph: ""
-        property int glyphSize: 12
-        property color tone: Theme.fgDim
-        signal clicked()
-        width: 30; height: 30; radius: 15
-        color: hit.containsMouse ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.08)
-        Behavior on color { ColorAnimation { duration: 120 } }
-        Text {
-            anchors.centerIn: parent
-            text: b.glyph
-            font.family: "JetBrainsMono Nerd Font"
-            font.pixelSize: b.glyphSize
-            color: b.tone
-        }
-        MouseArea {
-            id: hit
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: b.clicked()
-        }
-    }
-
-    // A small label + value pair, right aligned (used beside the big number).
-    component Stat: ColumnLayout {
-        property string label: ""
-        property string value: ""
-        spacing: 0
-        Text {
-            Layout.alignment: Qt.AlignRight
-            text: parent.label
-            color: Theme.fgDim
-            font.family: "JetBrainsMono Nerd Font"
-            font.pixelSize: 8
-            font.letterSpacing: 1.2
-        }
-        Text {
-            Layout.alignment: Qt.AlignRight
-            text: parent.value
-            color: Theme.fg
-            font.family: "JetBrainsMono Nerd Font"
-            font.pixelSize: 17
-            font.weight: Font.DemiBold
-        }
-    }
-
     // --- Data ---------------------------------------------------------------
     property int page: 0
     property int range: 1
@@ -489,9 +431,9 @@ Scope {
                                 ColumnLayout {
                                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                                     spacing: 10
-                                    Stat { label: "PEAK DAY"; value: root.maxDay > 1 ? root.fmt(root.maxDay) : "–" }
-                                    Stat { label: "DAILY AVG"; value: root.fmt(root.avgDay) }
-                                    Stat { label: "GOAL DAYS"; value: root.goalHit + " / " + root.days.length }
+                                    StatBlock { label: "PEAK DAY"; value: root.maxDay > 1 ? root.fmt(root.maxDay) : "–" }
+                                    StatBlock { label: "DAILY AVG"; value: root.fmt(root.avgDay) }
+                                    StatBlock { label: "GOAL DAYS"; value: root.goalHit + " / " + root.days.length }
                                 }
                             }
 

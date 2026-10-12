@@ -22,3 +22,6 @@ NotesPanel NotesPanel.qml
 WeatherPanel WeatherPanel.qml
 QsSliderRow QsSliderRow.qml
 QuickSettings QuickSettings.qml
+Glass Glass.qml
+IconBtn IconBtn.qml
+StatBlock StatBlock.qml
