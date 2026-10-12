@@ -79,19 +79,15 @@ Scope {
             Shortcut { sequence: "Escape"; onActivated: root.shown = false }
 
             // Glass body
+            // Glass body (no radius or border of its own: labwc rounds and outlines the window)
             Rectangle {
                 anchors.fill: parent
-                radius: 28
                 color: Qt.alpha(Theme.panel, 0.82)
-                border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.16)
                 opacity: w.appear
 
                 // Specular sheen across the top
                 Rectangle {
                     anchors.fill: parent
-                    anchors.margins: 1
-                    radius: parent.radius - 1
                     gradient: Gradient {
                         GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.10) }
                         GradientStop { position: 0.3; color: Qt.rgba(1, 1, 1, 0.0) }
