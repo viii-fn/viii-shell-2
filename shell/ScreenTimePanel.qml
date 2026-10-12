@@ -80,8 +80,7 @@ Scope {
         { label: "Week", r: 7 }
     ]
 
-    // 3700 -> "1h 1m"
-        // 3700 -> "1h 01m". Minutes are padded to 2 digits when hours show, so the
+    // 3700 -> "1h 01m". Minutes are padded to 2 digits when hours show, so the
     // text doesn't change width when minutes go from 9 to 10.
     function fmt(s) {
         const h = Math.floor(s / 3600)
@@ -500,7 +499,7 @@ Scope {
                                             required property int index
                                             height: shareHost.height
                                             radius: 8
-                                            width: Math.max(0, (shareHost.width - 2 * 5) * (modelData.secs / root.denom) * root.progress)
+                                            width: Math.max(0, (shareHost.width - Math.max(0, Math.min(6, root.apps.length) - 1) * 2) * (modelData.secs / root.denom) * root.progress)
                                             color: root.palette[index % root.palette.length]
                                         }
                                     }
