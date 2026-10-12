@@ -28,4 +28,5 @@ ShellRoot {
     ScreenTimePanel {}
     TrimPanel {}
     OmniLauncher {}
+    GalleryPanel {}
 }
