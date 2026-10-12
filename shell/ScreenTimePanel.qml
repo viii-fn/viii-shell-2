@@ -81,11 +81,23 @@ Scope {
     ]
 
     // 3700 -> "1h 1m"
+        // 3700 -> "1h 01m". Minutes are padded to 2 digits when hours show, so the
+    // text doesn't change width when minutes go from 9 to 10.
     function fmt(s) {
         const h = Math.floor(s / 3600)
         const m = Math.floor((s % 3600) / 60)
-        if (h > 0) return h + "h " + m + "m"
+        if (h > 0) return h + "h " + ("0" + m).slice(-2) + "m"
         if (m > 0) return m + "m"
+        return s + "s"
+    }
+    // Same as fmt, but for COUNTING UP: `f` is the final value. The layout (hours+minutes,
+    // minutes only, or seconds only) is chosen from `f`, so the unit never changes mid-count.
+    //   fmtTo(1500, 7380)  ->  "0h 25m"      (7380 s = 2h 03m, so it counts in hours + minutes)
+    function fmtTo(s, f) {
+        const h = Math.floor(s / 3600)
+        const m = Math.floor((s % 3600) / 60)
+        if (f >= 3600) return h + "h " + ("0" + m).slice(-2) + "m"
+        if (f >= 60) return m + "m"
         return s + "s"
     }
     function hex(c) {
@@ -93,14 +105,23 @@ Scope {
         return "#" + h(c.r) + h(c.g) + h(c.b)
     }
     // Big digits, small units, shared baseline.
-    function durHtml(s, ns, us, nc, uc) {
+    function durHtml(s, f, ns, us, nc, uc) {
         const num = v => '<span style="font-size:' + ns + 'px; font-weight:600; color:' + hex(nc) + ';">' + v + '</span>'
         const unit = v => '<span style="font-size:' + us + 'px; color:' + hex(uc) + ';">' + v + '</span>'
+        // Pads on the left with blank slots until the value is as long as the final one.
+        // A space is exactly as wide as a digit in a monospace font, so nothing shifts.
+        const slots = (v, finalV) => {
+            let blanks = ""
+            for (let i = String(v).length; i < String(finalV).length; i++) blanks += "&nbsp;"
+            return blanks + v
+        }
         const h = Math.floor(s / 3600)
         const m = Math.floor((s % 3600) / 60)
-        if (h > 0) return num(h) + unit("h") + "&nbsp;" + num(m) + unit("m")
-        if (m > 0) return num(m) + unit("m")
-        return num(s) + unit("s")
+        const fh = Math.floor(f / 3600)
+        const fm = Math.floor((f % 3600) / 60)
+        if (fh > 0) return num(slots(h, fh)) + unit("h") + "&nbsp;" + num(("0" + m).slice(-2)) + unit("m")
+        if (fm > 0) return num(slots(m, fm)) + unit("m")
+        return num(slots(s, f)) + unit("s")
     }
     function dayName(iso) {
         return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(iso + "T00:00:00").getDay()]
@@ -417,7 +438,7 @@ Scope {
                                     Text {
                                         textFormat: Text.RichText
                                         font.family: root.mono
-                                        text: root.durHtml(Math.round(root.totalSecs * root.progress), 80, 26, Theme.accentHi, Theme.fgDim)
+                                        text: root.durHtml(Math.round(root.totalSecs * root.progress), root.totalSecs, 80, 26, Theme.accentHi, Theme.fgDim)
                                     }
                                     Text {
                                         visible: root.range === 1 && root.avgDay > 0 && root.deltaPct !== 0
@@ -548,7 +569,7 @@ Scope {
                                                 spacing: 0
                                                 Text {
                                                     Layout.alignment: Qt.AlignRight
-                                                    text: root.fmt(Math.round(cell.modelData.secs * root.progress))
+                                                    text: root.fmtTo(Math.round(cell.modelData.secs * root.progress), cell.modelData.secs)
                                                     color: Theme.fg
                                                     font.family: root.mono
                                                     font.pixelSize: 12
@@ -656,7 +677,7 @@ Scope {
                                             Text {
                                                 anchors.horizontalCenter: parent.horizontalCenter
                                                 y: wave.py(dayCol.index) - 24
-                                                text: root.fmt(Math.round(dayCol.modelData.secs * root.progress))
+                                                text: root.fmtTo(Math.round(dayCol.modelData.secs * root.progress), dayCol.modelData.secs)
                                                 color: dayCol.selectedDay ? Theme.accentHi : Theme.fg
                                                 font.family: root.mono
                                                 font.pixelSize: 10
