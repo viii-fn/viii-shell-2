@@ -25,3 +25,4 @@ QuickSettings QuickSettings.qml
 Glass Glass.qml
 IconBtn IconBtn.qml
 StatBlock StatBlock.qml
+PillBtn PillBtn.qml
