@@ -60,13 +60,19 @@ Scope {
                 else input.forceActiveFocus()
             }
 
-            ChamferPanel {
+            // Glass body (no radius or border of its own: labwc rounds and outlines the window)
+            Rectangle {
                 anchors.fill: parent
-                cut: 22
-                pattern: true
-                patternOpacity: 0.05
-                fillColor: Theme.panel
-                strokeColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
+                color: Qt.alpha(Theme.panel, 0.82)
+
+                // Specular sheen across the top
+                Rectangle {
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.10) }
+                        GradientStop { position: 0.25; color: Qt.rgba(1, 1, 1, 0.0) }
+                    }
+                }
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -76,11 +82,6 @@ Scope {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 10
-                        HexShape {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16 / 1.1547
-                            fillColor: Theme.accent
-                        }
                         Text {
                             text: "Launcher"
                             color: Theme.fg
@@ -159,13 +160,13 @@ Scope {
                             }
                         }
 
-                        // Fixed pointer at the top
+                        // Fixed pointer at the top: a small accent pill
                         Rectangle {
-                            x: dial.width / 2 - 5
-                            y: 6
-                            width: 10
-                            height: 10
-                            rotation: 45
+                            x: dial.width / 2 - 8
+                            y: 8
+                            width: 16
+                            height: 5
+                            radius: 2.5
                             color: Theme.accent
                         }
 
@@ -238,13 +239,17 @@ Scope {
                                 visible: opacity > 0.01
                                 z: isSel ? 2 : 1
 
-                                HexShape {
-                                    anchors.centerIn: parent
-                                    width: 56
-                                    height: 56 / 1.1547
-                                    fillColor: slot.isSel
-                                        ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.30)
-                                        : Qt.rgba(Theme.surfaceHi.r, Theme.surfaceHi.g, Theme.surfaceHi.b, 0.9)
+                                // glass tile behind the icon (rounded square, like an app icon)
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 18
+                                    color: slot.isSel
+                                        ? Qt.alpha(Theme.accent, 0.30)
+                                        : Qt.rgba(1, 1, 1, 0.08)
+                                    border.width: 1
+                                    border.color: slot.isSel
+                                        ? Qt.alpha(Theme.accent, 0.55)
+                                        : Qt.rgba(1, 1, 1, 0.10)
                                 }
                                 Image {
                                     id: ico
@@ -282,8 +287,17 @@ Scope {
                             anchors.centerIn: parent
                             width: 210
                             height: 210
-                            scale: 1 - 0.10 * dial.press
 
+                            // Stretch: on the launch slam the core squashes, wider and flatter,
+                            // like a blob of liquid being pressed. (Was a plain uniform shrink.)
+                            transform: Scale {
+                                origin.x: core.width / 2
+                                origin.y: core.height / 2
+                                xScale: 1 + 0.05 * dial.press
+                                yScale: 1 - 0.12 * dial.press
+                            }
+
+                            // ripple ring that expands out on the slam
                             Rectangle {
                                 anchors.fill: parent
                                 radius: 105
@@ -293,21 +307,25 @@ Scope {
                                 opacity: dial.press * 0.9
                                 scale: 1 + dial.press * 0.5
                             }
+                            // glass disc
                             Rectangle {
                                 anchors.fill: parent
                                 radius: 105
-                                color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.88)
-                                border.width: 2
+                                color: Qt.alpha(Theme.surface, 0.60)
+                                border.width: 1.5
                                 border.color: dial.press > 0.05
                                     ? Theme.accentHi
-                                    : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6)
+                                    : Qt.alpha(Theme.accent, 0.50)
                             }
-                            HexShape {
-                                anchors.centerIn: parent
-                                width: 160
-                                height: 160 / 1.1547
-                                fillColor: Theme.accent
-                                opacity: 0.10
+                            // soft highlight across the top of the disc
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 1
+                                radius: 104
+                                gradient: Gradient {
+                                    GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.12) }
+                                    GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.0) }
+                                }
                             }
 
                             ColumnLayout {
@@ -396,11 +414,11 @@ Scope {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 42
                         radius: 21
-                        color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.7)
+                        color: Qt.rgba(1, 1, 1, 0.07)
                         border.width: 1
                         border.color: input.activeFocus
-                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.7)
-                            : Theme.line
+                            ? Qt.alpha(Theme.accent, 0.70)
+                            : Qt.rgba(1, 1, 1, 0.12)
 
                         RowLayout {
                             anchors.fill: parent

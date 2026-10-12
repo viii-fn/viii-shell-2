@@ -159,16 +159,29 @@ Scope {
             height: root.shown ? panel.height : 0
         }
 
-        ChamferPanel {
+        Rectangle {
             id: panel
             x: 12      // starting position; changes as you drag
             y: 54
             width: 580
             height: Math.max(leftCol.implicitHeight, lyricsBox.implicitHeight) + 40
-            cut: 18
-            pattern: true
+            radius: 28
+            color: Qt.alpha(Theme.panel, 0.82)
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, 0.16)
             opacity: root.appear
             scale: 0.96 + 0.04 * root.appear
+
+            // Specular sheen across the top
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: parent.radius - 1
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.10) }
+                    GradientStop { position: 0.3; color: Qt.rgba(1, 1, 1, 0.0) }
+                }
+            }
 
             // Drag anywhere on empty card space; stays inside the screen
             MouseArea {
@@ -192,7 +205,7 @@ Scope {
                     width: 180
                     spacing: 10
 
-                    // Album art cropped to a hexagon, double outline like the picker
+                    // Album art with rounded corners
                     Item {
                         width: parent.width
                         height: parent.width / 1.1547
@@ -215,13 +228,14 @@ Scope {
                                 source: root.player ? (root.player.trackArtUrl || "") : ""
                             }
                         }
-                        HexShape {
+                        Rectangle {
                             id: artMask
                             anchors.fill: parent
+                            radius: 22
                             visible: false
                             layer.enabled: true
                             layer.samples: 4
-                            fillColor: "white"
+                            color: "white"
                         }
                         MultiEffect {
                             anchors.fill: parent
@@ -229,16 +243,13 @@ Scope {
                             maskEnabled: true
                             maskSource: artMask
                         }
-                        HexShape {
+                        // thin light edge
+                        Rectangle {
                             anchors.fill: parent
-                            strokeColor: Theme.accent
-                            strokeWidth: 2
-                        }
-                        HexShape {
-                            anchors.fill: parent
-                            anchors.margins: 7
-                            strokeColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35)
-                            strokeWidth: 1
+                            radius: 22
+                            color: "transparent"
+                            border.width: 1
+                            border.color: Qt.rgba(1, 1, 1, 0.22)
                         }
                     }
 
@@ -284,24 +295,40 @@ Scope {
 
                     Row {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 6
-                        HexButton {
-                            size: 36; glyph: "\uf048"
+                        spacing: 10
+                        IconBtn {
+                            width: 36; height: 36; radius: 18
+                            glyph: "\uf048"; glyphSize: 13; tone: Theme.fg
                             anchors.verticalCenter: parent.verticalCenter
                             onClicked: if (root.player) root.player.previous()
                         }
-                        HexButton {
-                            size: 46; filled: true; glyphSize: 17
-                            glyph: (root.player && root.player.isPlaying) ? "\uf04c" : "\uf04b"
+                        Rectangle {
+                            width: 46; height: 46; radius: 23
+                            color: Theme.accent
                             anchors.verticalCenter: parent.verticalCenter
-                            onClicked: if (root.player) root.player.togglePlaying()
+                            scale: playHit.pressed ? 0.94 : 1
+                            Behavior on scale { NumberAnimation { duration: 80 } }
+                            Text {
+                                anchors.centerIn: parent
+                                text: (root.player && root.player.isPlaying) ? "\uf04c" : "\uf04b"
+                                color: Theme.accentText
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 17
+                            }
+                            MouseArea {
+                                id: playHit
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (root.player) root.player.togglePlaying()
+                            }
                         }
-                        HexButton {
-                            size: 36; glyph: "\uf051"
+                        IconBtn {
+                            width: 36; height: 36; radius: 18
+                            glyph: "\uf051"; glyphSize: 13; tone: Theme.fg
                             anchors.verticalCenter: parent.verticalCenter
                             onClicked: if (root.player) root.player.next()
                         }
-                    }
+                    }                    
                 }
 
                 // RIGHT SIDE: Synced Lyrics

@@ -1,5 +1,8 @@
 // File: ~/viii-shell-2/shell/NotesPanel.qml
+// Notes, glass style. Sidebar (search + list) on the left, editor on the right.
 //   qs ipc call notes toggle | show | hide | newNote | daily
+// Keys: Ctrl+N new, Ctrl+S save, Ctrl+F search, Ctrl+D delete (press twice), Esc close
+
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -11,6 +14,7 @@ Scope {
     property bool shown: false
     property bool alive: false
     readonly property int closeMs: 600
+    readonly property string mono: "JetBrainsMono Nerd Font"
 
     property string dir: Quickshell.env("HOME") + "/Notes"
     property var allNotes: []
@@ -240,8 +244,6 @@ Scope {
             color: "transparent"
 
             property bool loading: false
-            property real appear: 0
-            Behavior on appear { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
 
             readonly property int words: {
                 const t = editor.text.trim()
@@ -255,10 +257,7 @@ Scope {
                 root.touchEntry(root.curPath, editor.text)
             }
 
-            Component.onCompleted: {
-                appear = Qt.binding(() => root.shown ? 1 : 0)
-                editor.forceActiveFocus()
-            }
+            Component.onCompleted: editor.forceActiveFocus()
             onVisibleChanged: {
                 if (!visible) { saveNow(); root.shown = false }
                 else editor.forceActiveFocus()
@@ -303,16 +302,21 @@ Scope {
                 }
             }
 
-            ChamferPanel {
+            // Glass body
+            Rectangle {
                 anchors.fill: parent
-                cut: 22
-                pattern: true
-                patternOpacity: 0.05
-                fillColor: Theme.panel
-                strokeColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
-                opacity: win.appear
+                color: Qt.alpha(Theme.panel, 0.82)
                 focus: true
                 Keys.onEscapePressed: root.shown = false
+
+                // Specular sheen across the top
+                Rectangle {
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.10) }
+                        GradientStop { position: 0.25; color: Qt.rgba(1, 1, 1, 0.0) }
+                    }
+                }
 
                 RowLayout {
                     anchors.fill: parent
@@ -328,44 +332,43 @@ Scope {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
-                            HexShape {
-                                Layout.preferredWidth: 16
-                                Layout.preferredHeight: 16 / 1.1547
-                                fillColor: Theme.accent
-                            }
                             Text {
                                 text: "Notes"
                                 color: Theme.fg
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 17
+                                font.family: root.mono
+                                font.pixelSize: 18
                                 font.weight: Font.DemiBold
                             }
                             Text {
                                 Layout.fillWidth: true
                                 text: root.allNotes.length
                                 color: Theme.fgDim
-                                font.family: "JetBrainsMono Nerd Font"
+                                font.family: root.mono
                                 font.pixelSize: 11
                             }
-                            HexButton {
-                                Layout.preferredWidth: 28 * 1.1547
-                                Layout.preferredHeight: 28
-                                size: 28; glyphSize: 12
-                                outlined: true
+                            IconBtn {
                                 glyph: "\uf067"
+                                tone: Theme.accentHi
                                 onClicked: root.createNote(root.dir + "/note-" + root.stamp() + ".md", "")
                             }
                         }
 
-                        Rectangle {
+                        // Search pill
+                        Glass {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 38
                             radius: 19
-                            color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.7)
-                            border.width: 1
-                            border.color: search.activeFocus
-                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.7)
-                                : Theme.line
+
+                            // Focus ring
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 19
+                                color: "transparent"
+                                border.width: 1
+                                border.color: Theme.accent
+                                opacity: search.activeFocus ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: 120 } }
+                            }
 
                             RowLayout {
                                 anchors.fill: parent
@@ -375,7 +378,7 @@ Scope {
                                 Text {
                                     text: "\uf002"
                                     color: Theme.fgDim
-                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.family: root.mono
                                     font.pixelSize: 11
                                 }
                                 Item {
@@ -386,7 +389,7 @@ Scope {
                                         visible: search.text === ""
                                         text: "Search notes"
                                         color: Theme.fgDim
-                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.family: root.mono
                                         font.pixelSize: 11
                                     }
                                     TextInput {
@@ -394,7 +397,7 @@ Scope {
                                         anchors.fill: parent
                                         verticalAlignment: TextInput.AlignVCenter
                                         color: Theme.fg
-                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.family: root.mono
                                         font.pixelSize: 12
                                         clip: true
                                         onTextChanged: root.query = text
@@ -430,13 +433,15 @@ Scope {
                                 width: list.width
                                 height: 64
 
-                                ChamferPanel {
+                                Rectangle {
                                     anchors.fill: parent
-                                    cut: 10
-                                    fillColor: it.sel
-                                        ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
-                                        : (hit.containsMouse ? Theme.surface : Qt.rgba(1, 1, 1, 0.03))
-                                    strokeColor: it.sel ? Theme.accent : "transparent"
+                                    radius: 16
+                                    color: it.sel
+                                        ? Qt.alpha(Theme.accent, 0.22)
+                                        : (hit.containsMouse ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(1, 1, 1, 0.04))
+                                    border.width: it.sel ? 1 : 0
+                                    border.color: Theme.accent
+                                    Behavior on color { ColorAnimation { duration: 120 } }
                                 }
 
                                 ColumnLayout {
@@ -454,7 +459,7 @@ Scope {
                                             Layout.fillWidth: true
                                             text: it.noteTitle
                                             color: it.sel ? Theme.accentHi : Theme.fg
-                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.family: root.mono
                                             font.pixelSize: 13
                                             font.weight: Font.DemiBold
                                             elide: Text.ElideRight
@@ -462,7 +467,7 @@ Scope {
                                         Text {
                                             text: root.ago(it.noteT)
                                             color: Theme.fgDim
-                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.family: root.mono
                                             font.pixelSize: 9
                                         }
                                     }
@@ -470,7 +475,7 @@ Scope {
                                         Layout.fillWidth: true
                                         text: it.notePreview !== "" ? it.notePreview : "Empty note"
                                         color: Theme.fgDim
-                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.family: root.mono
                                         font.pixelSize: 10
                                         elide: Text.ElideRight
                                     }
@@ -490,7 +495,7 @@ Scope {
                                 visible: noteModel.count === 0
                                 text: root.query.trim() !== "" ? "No matches" : "No notes yet"
                                 color: Theme.fgDim
-                                font.family: "JetBrainsMono Nerd Font"
+                                font.family: root.mono
                                 font.pixelSize: 11
                             }
                         }
@@ -502,8 +507,7 @@ Scope {
                         Layout.preferredWidth: 1
                         Layout.leftMargin: 18
                         Layout.rightMargin: 18
-                        color: Theme.line
-                        opacity: 0.8
+                        color: Qt.rgba(1, 1, 1, 0.10)
                     }
 
                     // ───────── Editor ─────────
@@ -521,38 +525,40 @@ Scope {
                                 Layout.fillWidth: true
                                 text: root.curEntry ? "Edited " + root.ago(root.curEntry.t) + (root.ago(root.curEntry.t) === "now" ? "" : " ago") : ""
                                 color: Theme.fgDim
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 10
+                                font.family: root.mono
+                                font.pixelSize: 11
                             }
 
-                            HexShape {
-                                Layout.preferredWidth: 10
-                                Layout.preferredHeight: 10 / 1.1547
+                            Rectangle {
+                                Layout.preferredWidth: 7
+                                Layout.preferredHeight: 7
                                 Layout.alignment: Qt.AlignVCenter
-                                fillColor: root.dirty ? Theme.fgDim : Theme.accent
+                                radius: 4
+                                color: root.dirty ? Theme.fgDim : Theme.accent
+                                Behavior on color { ColorAnimation { duration: 160 } }
                             }
                             Text {
                                 text: root.dirty ? "Editing" : "Saved"
                                 color: root.dirty ? Theme.fgDim : Theme.accentHi
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 10
+                                font.family: root.mono
+                                font.pixelSize: 11
                             }
 
                             Rectangle {
-                                Layout.preferredWidth: root.armed ? 92 : 40
-                                Layout.preferredHeight: 30
-                                radius: 15
+                                Layout.preferredWidth: root.armed ? 96 : 34
+                                Layout.preferredHeight: 34
+                                radius: 17
                                 color: root.armed
                                     ? Qt.rgba(Theme.bad.r, Theme.bad.g, Theme.bad.b, 0.25)
-                                    : (delHit.containsMouse ? Theme.surfaceHi : Qt.rgba(1, 1, 1, 0.06))
+                                    : (delHit.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.06))
                                 border.width: 1
-                                border.color: root.armed ? Theme.bad : Theme.line
+                                border.color: root.armed ? Theme.bad : Qt.rgba(1, 1, 1, 0.12)
                                 Behavior on Layout.preferredWidth { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                                 Text {
                                     anchors.centerIn: parent
                                     text: root.armed ? "\uf1f8  Confirm" : "\uf1f8"
                                     color: root.armed || delHit.containsMouse ? Theme.bad : Theme.fgDim
-                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.family: root.mono
                                     font.pixelSize: 11
                                 }
                                 MouseArea {
@@ -568,12 +574,11 @@ Scope {
                             }
                         }
 
-                        ChamferPanel {
+                        // Editor card
+                        Glass {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            cut: 14
-                            fillColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.45)
-                            strokeColor: Theme.line
+                            radius: 20
 
                             Text {
                                 anchors.left: parent.left
@@ -584,7 +589,7 @@ Scope {
                                 text: "Start typing…"
                                 color: Theme.fgDim
                                 opacity: 0.6
-                                font.family: "JetBrainsMono Nerd Font"
+                                font.family: root.mono
                                 font.pixelSize: 14
                             }
 
@@ -615,7 +620,7 @@ Scope {
                                     selectByMouse: true
                                     persistentSelection: true
                                     tabStopDistance: 28
-                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.family: root.mono
                                     font.pixelSize: 14
                                     onCursorRectangleChanged: flick.ensureVisible(cursorRectangle)
                                     onTextChanged: {
@@ -628,7 +633,7 @@ Scope {
 
                             Rectangle {
                                 anchors.right: parent.right
-                                anchors.rightMargin: 5
+                                anchors.rightMargin: 6
                                 width: 3
                                 radius: 2
                                 color: Theme.fgDim
@@ -646,29 +651,29 @@ Scope {
 
                             Text {
                                 textFormat: Text.RichText
-                                font.family: "JetBrainsMono Nerd Font"
+                                font.family: root.mono
                                 text: root.statHtml(win.words, win.words === 1 ? "word" : "words", 30, 12, Theme.accentHi)
                             }
                             Text {
                                 textFormat: Text.RichText
-                                font.family: "JetBrainsMono Nerd Font"
+                                font.family: root.mono
                                 text: root.statHtml(editor.text.length, "chars", 20, 10, Theme.fg)
                             }
                             Text {
                                 textFormat: Text.RichText
-                                font.family: "JetBrainsMono Nerd Font"
+                                font.family: root.mono
                                 text: root.statHtml(editor.lineCount, "lines", 20, 10, Theme.fg)
                             }
                             Text {
                                 textFormat: Text.RichText
-                                font.family: "JetBrainsMono Nerd Font"
+                                font.family: root.mono
                                 text: root.statHtml(Math.max(1, Math.ceil(win.words / 200)), "min read", 20, 10, Theme.fg)
                             }
                             Item { Layout.fillWidth: true }
                             Text {
                                 text: "^N new   ^F search   ^D delete"
                                 color: Theme.fgDim
-                                font.family: "JetBrainsMono Nerd Font"
+                                font.family: root.mono
                                 font.pixelSize: 9
                             }
                         }
@@ -686,14 +691,14 @@ Scope {
                             text: "\uf249"
                             color: Theme.fgDim
                             opacity: 0.5
-                            font.family: "JetBrainsMono Nerd Font"
+                            font.family: root.mono
                             font.pixelSize: 56
                         }
                         Text {
                             Layout.alignment: Qt.AlignHCenter
                             text: "Nothing open"
                             color: Theme.fgDim
-                            font.family: "JetBrainsMono Nerd Font"
+                            font.family: root.mono
                             font.pixelSize: 13
                         }
                         Rectangle {
@@ -707,7 +712,7 @@ Scope {
                                 anchors.centerIn: parent
                                 text: "New note"
                                 color: Theme.accentText
-                                font.family: "JetBrainsMono Nerd Font"
+                                font.family: root.mono
                                 font.pixelSize: 11
                                 font.weight: Font.DemiBold
                             }

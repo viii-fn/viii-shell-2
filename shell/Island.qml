@@ -1,22 +1,16 @@
 // File: ~/viii-shell-2/shell/Island.qml
-// The notch at the top of the screen, restyled as part of the hive:
-//   - the body is a chamfered shape (cut corners at the honeycomb angle)
-//   - wifi, clock, music buttons and window chips are hexagons
-//   - the battery is a hexagon that fills up like a honeycomb cell
-//   - the album art is cropped to a hexagon
-//   - a faint honeycomb pattern sits behind everything (painted once)
+// A glass notch attached to the top edge of the screen: network, battery
+// (with the charging sequence), clock, music (only while a player exists)
+// and open-window icons. Bottom corners are rounded, the top is square.
 // Every color comes from Theme.*, so theme switches fade this too.
-// The logic (UPower, MPRIS, toplevels, network check, charging sequence) is
-// the same as before.
 
 import Quickshell
 import Quickshell.Io                 // Process: run shell commands
-import Quickshell.Wayland             // ToplevelManager: list of open windows
-import Quickshell.Services.Mpris      // music players
-import Quickshell.Services.UPower     // battery + charging state
+import Quickshell.Wayland            // ToplevelManager: list of open windows
+import Quickshell.Services.Mpris     // music players
+import Quickshell.Services.UPower    // battery + charging state
 import QtQuick
-import QtQuick.Shapes                 // Shape: draws the notch outline
-import QtQuick.Effects                // MultiEffect: crops album art to a hexagon
+import QtQuick.Effects               // MultiEffect: rounds the album art corners
 
 PanelWindow {
     id: win
@@ -31,19 +25,13 @@ PanelWindow {
     // Only the notch catches clicks; the transparent rest lets clicks through.
     mask: Region { item: island }
 
-    readonly property string iconFont: "JetBrainsMono Nerd Font"
-    readonly property string textFont: "JetBrainsMono Nerd Font"
+    readonly property string font: "JetBrainsMono Nerd Font"
 
     // --- Shape and timing: tweak these -----------------------------------
-    // Slopes are chosen so the cut corners sit at 60 degrees, like a hexagon.
-    readonly property real flare: 8        // how far the top "ears" stick out
-    readonly property real earH: 14        // how far down the ears slope
-    readonly property real chamX: 11.5     // bottom chamfer, horizontal part
-    readonly property real chamY: 20       // bottom chamfer, vertical part
-    readonly property real pad: 14         // inner padding left/right
+    readonly property real corner: 22      // bottom corner roundness
+    readonly property real pad: 22         // inner padding left/right (keep >= corner)
     readonly property real gap: 30         // space between sections
     readonly property int animMs: 380      // expand/shrink duration
-    readonly property real hexK: 1.1547    // width / height of a regular flat-top hexagon
 
     // --- Data -------------------------------------------------------------
     readonly property var bat: UPower.displayDevice
@@ -56,13 +44,11 @@ PanelWindow {
                                    : (pct <= 15 ? Theme.bad
                                    : (pct <= 30 ? Theme.accentHi : Theme.fg))
 
-    property bool showDate: false          // clock toggle: time <-> date
     property bool chargeSpace: false       // step 1: make room for the charging label
     property bool chargeShown: false       // step 2: fade the label in (after the room exists)
 
     // Network: ask the kernel for the default route. It prints the interface
-    // name (wlan0, enp3s0...) or nothing at all when you're offline. This works
-    // with NetworkManager, iwd, systemd-networkd, anything.
+    // name (wlan0, enp3s0...) or nothing when offline. Works with any network manager.
     property string netIface: ""
     readonly property bool online: netIface !== ""
     readonly property bool isWifi: netIface.startsWith("w")
@@ -72,7 +58,6 @@ PanelWindow {
         command: ["sh", "-c", "ip -o route show default | awk '{print $5; exit}'"]
         stdout: StdioCollector { onStreamFinished: win.netIface = text.trim() }
     }
-    // Was every 4 s; every 10 s wakes the CPU less often and is plenty for a status icon.
     Timer {
         interval: 10000; running: true; repeat: true; triggeredOnStart: true
         onTriggered: netProc.running = true
@@ -93,44 +78,6 @@ PanelWindow {
         }
     }
 
-    // A hexagon button / icon holder. `size` is its height; the width follows.
-    component HexBtn: Item {
-        id: btn
-        property string glyph: ""
-        property int glyphSize: 12
-        property real size: 26
-        property bool filled: false          // accent fill (the play button)
-        property bool outlined: false        // thin outline (status icons)
-        property bool interactive: true
-        property color tone: Theme.fg
-        signal clicked()
-        height: size
-        width: size * win.hexK
-
-        HexShape {
-            anchors.fill: parent
-            fillColor: btn.filled ? Theme.accent
-                     : ((btn.interactive && hover.containsMouse) ? Theme.surface
-                     : (btn.outlined ? Theme.surface : "transparent"))
-            strokeColor: btn.outlined ? Theme.line : "transparent"
-            strokeWidth: btn.outlined ? 1 : 0
-        }
-        Text {
-            anchors.centerIn: parent
-            text: btn.glyph
-            font.family: win.iconFont
-            font.pixelSize: btn.glyphSize
-            color: btn.filled ? Theme.accentText : btn.tone
-        }
-        MouseArea {
-            id: hover
-            anchors.fill: parent
-            enabled: btn.interactive
-            hoverEnabled: true
-            onClicked: btn.clicked()
-        }
-    }
-
     // --- The notch ----------------------------------------------------------
     Item {
         id: island
@@ -138,10 +85,10 @@ PanelWindow {
         anchors.horizontalCenter: parent.horizontalCenter
         height: 40
 
-        // The notch's width is the SUM OF EACH SECTION'S FINAL WIDTH, and it is
-        // the only thing animated here. The sections inside animate with the same
-        // duration and curve, so they stay in sync and nothing spills outside.
-        width: 2 * win.flare + 2 * win.pad
+        // Width = sum of each section's final width. It is animated here, and
+        // the sections animate with the same duration and curve, so they stay
+        // in sync and nothing spills outside.
+        width: 2 * win.pad
              + wifiSec.target + batSec.target + chargeSec.target
              + clockSec.target + musicSec.target + winSec.target
         Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
@@ -159,51 +106,34 @@ PanelWindow {
             ScriptAction { script: win.chargeSpace = false }
         }
 
-        // The outline: top ears, straight sides, chamfered bottom corners.
-        // It starts at the top-left corner and walks clockwise.
-        Shape {
-            anchors.fill: parent
-            preferredRendererType: Shape.CurveRenderer
-            ShapePath {
-                fillColor: Theme.panel
-                strokeColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
-                strokeWidth: 1
-                joinStyle: ShapePath.RoundJoin
-                startX: 0; startY: 0
+        // Glass body. It starts `corner` pixels ABOVE the screen edge, so its top
+        // rounded corners are cut off by the window edge and only the bottom ones show.
+        Rectangle {
+            id: glass
+            y: -win.corner
+            width: parent.width
+            height: parent.height + win.corner
+            radius: win.corner
+            color: Qt.alpha(Theme.panel, 0.72)
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, 0.16)
 
-                PathLine { x: island.width; y: 0 }                                              // top edge
-                PathLine { x: island.width - win.flare; y: win.earH }                           // right ear
-                PathLine { x: island.width - win.flare; y: island.height - win.chamY }          // right side
-                PathLine { x: island.width - win.flare - win.chamX; y: island.height }          // bottom-right chamfer
-                PathLine { x: win.flare + win.chamX; y: island.height }                         // bottom edge
-                PathLine { x: win.flare; y: island.height - win.chamY }                         // bottom-left chamfer
-                PathLine { x: win.flare; y: win.earH }                                          // left side
-                PathLine { x: 0; y: 0 }                                                         // left ear
-            }
-        }
-
-        // Faint honeycomb behind the content. The canvas is as wide as the
-        // window and painted once; the notch just reveals more of it as it
-        // grows, so the cells stay put on screen.
-        Item {
-            x: win.flare + win.chamX
-            width: Math.max(0, island.width - 2 * (win.flare + win.chamX))
-            height: island.height
-            clip: true
-            HexPattern {
-                x: (parent.width - width) / 2
-                width: win.implicitWidth
-                height: island.height
-                opacity: 0.07
+            // Specular sheen: a soft highlight fading down from the visible top edge.
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: parent.radius - 1
+                gradient: Gradient {
+                    GradientStop { position: win.corner / glass.height; color: Qt.rgba(1, 1, 1, 0.14) }
+                    GradientStop { position: 0.85; color: Qt.rgba(1, 1, 1, 0.0) }
+                }
             }
         }
 
         // Everything inside is clipped to the body, so nothing can ever draw
         // outside the notch while it is growing or shrinking.
         Item {
-            x: win.flare
-            width: island.width - 2 * win.flare
-            height: island.height
+            anchors.fill: parent
             clip: true
 
             // A left-to-right row of sections. Each section's width includes the
@@ -213,23 +143,20 @@ PanelWindow {
                 height: parent.height
                 spacing: 0
 
-                // 1. WIFI / ETHERNET / OFFLINE
+                // 1. NETWORK: wifi / ethernet / offline warning
                 Item {
                     id: wifiSec
-                    readonly property real target: 26 * win.hexK
+                    readonly property real target: 18
                     width: target; height: 40
-                    HexBtn {
-                        anchors.verticalCenter: parent.verticalCenter
-                        size: 26
-                        outlined: true
-                        interactive: false
-                        glyphSize: 13
-                        glyph: !win.online ? "\uf071" : (win.isWifi ? "\uf1eb" : "\uf0e8")
-                        tone: win.online ? Theme.fg : Theme.bad
+                    Text {
+                        anchors.centerIn: parent
+                        font.family: win.font; font.pixelSize: 14
+                        text: !win.online ? "\uf071" : (win.isWifi ? "\uf1eb" : "\uf0e8")
+                        color: win.online ? Theme.fg : Theme.bad
                     }
                 }
 
-                // 2. BATTERY: a hexagon that fills from the bottom, then the number
+                // 2. BATTERY: small iOS-style battery, bolt while charging, then the number
                 Item {
                     id: batSec
                     readonly property real target: win.gap + batRow.implicitWidth
@@ -241,41 +168,40 @@ PanelWindow {
                         spacing: 7
 
                         Item {
-                            id: hexBat
-                            width: 28 * win.hexK; height: 28
                             anchors.verticalCenter: parent.verticalCenter
+                            width: 26; height: 12
 
-                            HexShape {
-                                anchors.fill: parent
-                                fillColor: Theme.surface
-                                strokeColor: win.batTone
-                                strokeWidth: 1.5
-                            }
-                            // The "honey level": a clip box that grows upward.
-                            Item {
-                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom
-                                          leftMargin: 4; rightMargin: 4; bottomMargin: 4 }
-                                height: (hexBat.height - 8) * Math.max(0, Math.min(1, win.pct / 100))
-                                clip: true
-                                Behavior on height { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                                HexShape {
-                                    anchors.bottom: parent.bottom
-                                    width: hexBat.width - 8
-                                    height: hexBat.height - 8
-                                    fillColor: win.batTone
+                            Rectangle {                                   // outline
+                                width: 23; height: 12; radius: 4
+                                color: "transparent"
+                                border.width: 1
+                                border.color: Qt.alpha(win.batTone, 0.6)
+
+                                Rectangle {                               // level
+                                    x: 2; y: 2
+                                    height: parent.height - 4
+                                    width: Math.max(0, (parent.width - 4) * Math.min(1, win.pct / 100))
+                                    radius: 2
+                                    color: win.batTone
+                                    Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
                                 }
+                            }
+                            Rectangle {                                   // little nub on the right
+                                x: 24; anchors.verticalCenter: parent.verticalCenter
+                                width: 2; height: 5; radius: 1
+                                color: Qt.alpha(win.batTone, 0.6)
                             }
                         }
                         Text {
                             visible: win.charging
                             anchors.verticalCenter: parent.verticalCenter
-                            font.family: win.iconFont; font.pixelSize: 14
+                            font.family: win.font; font.pixelSize: 13
                             text: "\uf0e7"
                             color: Theme.good
                         }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            font.family: win.textFont; font.pixelSize: 13; font.weight: Font.DemiBold
+                            font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
                             text: win.pct + "%"
                             color: win.batTone
                         }
@@ -294,7 +220,7 @@ PanelWindow {
                         id: chargeLabel
                         x: win.gap
                         anchors.verticalCenter: parent.verticalCenter
-                        font.family: win.textFont; font.pixelSize: 13; font.weight: Font.DemiBold
+                        font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
                         text: "Charging"
                         color: Theme.good
                         opacity: win.chargeShown ? 1 : 0
@@ -302,40 +228,22 @@ PanelWindow {
                     }
                 }
 
-                // 4. CLOCK (tap to switch between time and date)
+                // 4. CLOCK
                 Item {
                     id: clockSec
-                    readonly property real target: win.gap + clockRow.implicitWidth
+                    readonly property real target: win.gap + clockText.implicitWidth
                     width: target; height: 40
-                    clip: true
-                    Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
-
-                    Row {
-                        id: clockRow
+                    Text {
+                        id: clockText
                         x: win.gap
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 8
-                        HexBtn {
-                            anchors.verticalCenter: parent.verticalCenter
-                            size: 24
-                            outlined: true
-                            interactive: false
-                            glyphSize: 11
-                            tone: Theme.accentHi
-                            glyph: win.showDate ? "\uf073" : "\uf017"
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            font.family: win.textFont; font.pixelSize: 13; font.weight: Font.DemiBold
-                            color: Theme.fg
-                            text: win.showDate ? Qt.formatDateTime(clock.date, "ddd, MMM d")
-                                               : Qt.formatDateTime(clock.date, "HH:mm")
-                        }
+                        font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
+                        color: Theme.fg
+                        text: Qt.formatDateTime(clock.date, "HH:mm")
                     }
-                    MouseArea { anchors.fill: parent; onClicked: win.showDate = !win.showDate }
                 }
 
-                // 5. MUSIC: hexagon album art, title, prev / play / next
+                // 5. MUSIC: rounded album art, title, play/pause
                 Item {
                     id: musicSec
                     property bool want: win.player !== null
@@ -354,138 +262,106 @@ PanelWindow {
                         id: musicRow
                         x: win.gap
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 8
+                        spacing: 10
                         opacity: musicSec.revealed ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 200 } }
 
-                        // Hexagon-cropped album art. It no longer spins: a constant
-                        // rotation keeps the GPU busy the whole time music plays.
+                        // Album art with rounded corners (the mask is a white rounded square).
                         Item {
-                            id: artHex
-                            width: 30 * win.hexK; height: 30
+                            width: 24; height: 24
                             anchors.verticalCenter: parent.verticalCenter
                             visible: musicSec.want       // no offscreen buffers while nothing plays
 
-                            Item {
-                                id: artStack
+                            Image {
+                                id: art
                                 anchors.fill: parent
-                                visible: false
-                                Rectangle { anchors.fill: parent; color: Theme.surface }
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "♪"; color: Theme.fgDim; font.pixelSize: 14
-                                    visible: art.status !== Image.Ready
-                                }
-                                Image {
-                                    id: art
-                                    anchors.fill: parent
-                                    fillMode: Image.PreserveAspectCrop
-                                    sourceSize: Qt.size(64, 64)
-                                    source: win.player ? win.player.trackArtUrl : ""
-                                }
+                                visible: false           // shown through the MultiEffect below
+                                fillMode: Image.PreserveAspectCrop
+                                sourceSize: Qt.size(48, 48)
+                                source: win.player ? win.player.trackArtUrl : ""
                             }
-                            HexShape {
+                            Rectangle {
                                 id: artMask
                                 anchors.fill: parent
+                                radius: 7
                                 visible: false
-                                layer.enabled: true
-                                layer.samples: 4
-                                fillColor: "white"
+                                layer.enabled: true      // the mask has to be a texture
+                                color: "white"
                             }
                             MultiEffect {
                                 anchors.fill: parent
-                                source: artStack
+                                source: art
                                 maskEnabled: true
                                 maskSource: artMask
-                            }
-                            HexShape {
-                                anchors.fill: parent
-                                strokeColor: Theme.accent
-                                strokeWidth: 1.5
+                                visible: art.status === Image.Ready
                             }
                         }
 
-                        // Song title only (no artist), cut off with "…" if long.
+                        // Song title, cut off with "…" if long.
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            width: Math.min(implicitWidth, 150)
+                            width: Math.min(implicitWidth, 140)
                             elide: Text.ElideRight
-                            font.family: win.textFont; font.pixelSize: 13; font.weight: Font.DemiBold
+                            font.family: win.font; font.pixelSize: 13
                             color: Theme.fg
                             text: win.player ? win.player.trackTitle : ""
                         }
 
-                        Row {
+                        // Play / pause: a round accent button.
+                        Rectangle {
+                            width: 24; height: 24; radius: 12
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 0
-                            HexBtn { size: 26; glyph: "\uf048"; onClicked: if (win.player) win.player.previous() }
-                            HexBtn {
-                                size: 30
-                                filled: true
-                                glyph: (win.player && win.player.isPlaying) ? "\uf04c" : "\uf04b"
+                            color: Theme.accent
+                            opacity: playArea.containsMouse ? 0.85 : 1
+                            Text {
+                                anchors.centerIn: parent
+                                font.family: win.font; font.pixelSize: 10
+                                color: Theme.accentText
+                                text: (win.player && win.player.isPlaying) ? "\uf04c" : "\uf04b"
+                            }
+                            MouseArea {
+                                id: playArea
+                                anchors.fill: parent
+                                hoverEnabled: true
                                 onClicked: if (win.player) win.player.togglePlaying()
                             }
-                            HexBtn { size: 26; glyph: "\uf051"; onClicked: if (win.player) win.player.next() }
                         }
                     }
                 }
 
-                // 6. OPEN WINDOWS (hexagon icon cells, active one outlined in the accent)
+                // 6. OPEN WINDOWS: one icon per window, the active one gets a glass capsule
                 Item {
                     id: winSec
                     readonly property int count: ToplevelManager.toplevels.values.length
-                    readonly property real target: count > 0 ? win.gap + 12 + 10 + iconsRow.implicitWidth : 0
+                    readonly property real target: count > 0 ? win.gap + iconsRow.implicitWidth : 0
                     width: target; height: 40
                     clip: true
                     Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
 
                     Row {
+                        id: iconsRow
                         x: win.gap
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 10
+                        spacing: 4
 
-                        // little accent hexagon as the divider
-                        HexShape {
-                            width: 12; height: 12 / win.hexK
-                            anchors.verticalCenter: parent.verticalCenter
-                            fillColor: Theme.accent
-                            opacity: 0.8
-                        }
+                        // Repeater makes one copy of the delegate per window.
+                        Repeater {
+                            model: ToplevelManager.toplevels
+                            delegate: Rectangle {
+                                required property var modelData      // the window this copy represents
+                                width: 28; height: 28; radius: 10
+                                color: modelData.activated ? Qt.rgba(1, 1, 1, 0.16) : "transparent"
 
-                        Row {
-                            id: iconsRow
-                            spacing: 2
-                            anchors.verticalCenter: parent.verticalCenter
-
-                            // Repeater makes one copy of the delegate per window.
-                            Repeater {
-                                model: ToplevelManager.toplevels
-                                delegate: Item {
-                                    required property var modelData      // the window this copy represents
-                                    width: 30 * win.hexK; height: 30
-
-                                    HexShape {
-                                        anchors.fill: parent
-                                        visible: modelData.activated
-                                        fillColor: Theme.surface
-                                        strokeColor: Theme.accent
-                                        strokeWidth: 1
-                                    }
-                                    Image {
-                                        anchors.centerIn: parent
-                                        width: 20; height: 20
-                                        sourceSize: Qt.size(40, 40)
-                                        opacity: modelData.activated ? 1 : 0.45
-                                        source: Quickshell.iconPath(modelData.appId, "application-x-executable")
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                                        onClicked: mouse => {
-                                            if (mouse.button === Qt.MiddleButton) modelData.close()
-                                            else modelData.activate()
-                                        }
-                                    }
+                                Image {
+                                    anchors.centerIn: parent
+                                    width: 18; height: 18
+                                    sourceSize: Qt.size(36, 36)
+                                    opacity: modelData.activated ? 1 : 0.5
+                                    source: Quickshell.iconPath(modelData.appId, "application-x-executable")
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: modelData.activate()
                                 }
                             }
                         }
