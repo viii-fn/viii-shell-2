@@ -8,7 +8,6 @@ HexPattern HexPattern.qml
 HexShape HexShape.qml
 HexSlider HexSlider.qml
 Island Island.qml
-Lock Lock.qml
 MusicCard MusicCard.qml
 MusicPanel MusicPanel.qml
 ScreenTimeLogger ScreenTimeLogger.qml
