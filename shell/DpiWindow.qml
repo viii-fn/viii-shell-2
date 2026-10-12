@@ -1,5 +1,5 @@
 // File: ~/viii-shell-2/shell/DpiWindow.qml
-// The display-scale panel (same wlr-randr logic as before), hive style.
+// The display-scale panel (same wlr-randr logic as before), glass style.
 // Created by DpiPanel.qml on the first toggle, destroyed shortly after closing.
 import QtQuick
 import Quickshell
@@ -47,6 +47,7 @@ FloatingWindow {
 
     Process { id: apply }
 
+    // Wait 300 ms after the last click, then apply once (so fast clicking doesn't spam wlr-randr).
     Timer {
         id: applyTimer
         interval: 300
@@ -59,67 +60,43 @@ FloatingWindow {
         }
     }
 
-    // A chamfered text button (the presets)
-    component ChamBtn: ChamferPanel {
-        id: b
-        property string label: ""
-        property bool accent: false
-        signal clicked()
-        cut: 8
-        fillColor: area.containsMouse ? Theme.surface : "transparent"
-        strokeColor: b.accent ? Theme.accent : Theme.line
-        Text {
-            anchors.centerIn: parent
-            text: b.label
-            color: b.accent ? Theme.accentHi : Theme.fg
-            font.family: "JetBrainsMono Nerd Font"
-            font.pixelSize: 13
-        }
-        MouseArea {
-            id: area
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: b.clicked()
-        }
-    }
-
-    ChamferPanel {
+    // Glass body (no radius or border of its own: labwc rounds and outlines the window)
+    Rectangle {
         anchors.fill: parent
-        cut: 18
-        pattern: true
+        color: Qt.alpha(Theme.panel, 0.82)
         opacity: root.appear
+
+        // Specular sheen across the top
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.10) }
+                GradientStop { position: 0.35; color: Qt.rgba(1, 1, 1, 0.0) }
+            }
+        }
 
         Column {
             anchors.centerIn: parent
-            spacing: 20
+            spacing: 22
 
-            Row {
+            Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8
-                HexShape {
-                    width: 12; height: 12 / 1.1547
-                    anchors.verticalCenter: parent.verticalCenter
-                    fillColor: Theme.accent
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "DISPLAY SCALE"
-                    color: Theme.fgDim
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 11
-                    font.letterSpacing: 3
-                }
+                text: "Display Scale"
+                color: Theme.fgDim
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: 12
             }
 
+            // − 100% +
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 14
 
-                HexButton {
+                IconBtn {
                     anchors.verticalCenter: parent.verticalCenter
-                    size: 58; glyphSize: 26; outlined: true
-                    glyph: "−"
+                    width: 52; height: 52; radius: 26
+                    glyph: "−"; glyphSize: 24
+                    tone: Theme.fg
                     onClicked: root.nudge(-0.1)
                 }
 
@@ -132,29 +109,53 @@ FloatingWindow {
                     color: Theme.accentHi
                     font.family: "JetBrainsMono Nerd Font"
                     font.pixelSize: 32
-                    font.bold: true
+                    font.weight: Font.DemiBold
                 }
 
-                HexButton {
+                IconBtn {
                     anchors.verticalCenter: parent.verticalCenter
-                    size: 58; glyphSize: 26; outlined: true
-                    glyph: "+"
+                    width: 52; height: 52; radius: 26
+                    glyph: "+"; glyphSize: 24
+                    tone: Theme.fg
                     onClicked: root.nudge(0.1)
                 }
             }
 
+            // Presets: the one matching the current scale is highlighted
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 10
+                spacing: 8
+
                 Repeater {
                     model: [1.0, 1.25, 1.5, 2.0]
-                    ChamBtn {
+
+                    delegate: Glass {
+                        id: preset
                         required property var modelData
-                        width: 62
-                        height: 34
-                        label: Math.round(modelData * 100) + "%"
-                        accent: Math.abs(root.dpiScale - modelData) < 0.01
-                        onClicked: root.setTo(modelData)
+                        readonly property bool active: Math.abs(root.dpiScale - modelData) < 0.01
+
+                        width: 64; height: 34; radius: 17
+                        color: active ? Qt.alpha(Theme.accent, 0.20)
+                                      : (presetHit.containsMouse ? Qt.rgba(1, 1, 1, 0.10)
+                                                                 : Qt.rgba(1, 1, 1, 0.05))
+                        border.color: active ? Theme.accent : Qt.rgba(1, 1, 1, 0.10)
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: Math.round(preset.modelData * 100) + "%"
+                            color: preset.active ? Theme.accentHi : Theme.fg
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 12
+                            font.weight: preset.active ? Font.DemiBold : Font.Normal
+                        }
+                        MouseArea {
+                            id: presetHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setTo(preset.modelData)
+                        }
                     }
                 }
             }
