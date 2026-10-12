@@ -352,143 +352,77 @@ ShellRoot {
                         }
                     }
 
-                    // ---- name + palette swatches
-                    Column {
+                    // ---- theme dots: one dot per theme in its accent color. The active dot springs open into a
+                    // pill with the name; a ring marks the theme that is applied right now.
+                    Item {
+                        id: dots
                         anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 10 * win.u
-
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: root.cur.label
-                            color: root.fg
-                            font.family: root.mono
-                            font.pixelSize: 36 * win.u
-                            font.weight: Font.DemiBold
-                        }
+                        width: 896 * win.u
+                        height: 48 * win.u
 
                         Row {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            spacing: 8 * win.u
+                            anchors.centerIn: parent
+                            spacing: 12 * win.u
+
                             Repeater {
-                                model: [root.cur.bg, root.cur.surface, root.cur.accent, root.cur.accentHi]
-                                delegate: Rectangle {
-                                    width: 18 * win.u
-                                    height: 18 * win.u
-                                    radius: width / 2
-                                    color: modelData
-                                    border.width: 1
-                                    border.color: Qt.rgba(1, 1, 1, 0.25)
+                                model: root.themes
+                                delegate: Item {
+                                    id: dt
+                                    readonly property bool active: index === root.sel
+                                    readonly property bool applied: modelData.name === root.currentName
+                                    width: pill.width
+                                    height: dots.height
+
+                                    Rectangle {
+                                        id: pill
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: dt.active ? lab.implicitWidth + 44 * win.u : 16 * win.u
+                                        height: dt.active ? 38 * win.u : 16 * win.u
+                                        radius: height / 2
+                                        color: modelData.accent
+                                        clip: true
+                                        border.width: (dt.applied && !dt.active) ? 2 : 0
+                                        border.color: root.fg
+                                        Behavior on width { SpringAnimation { spring: root.springK; damping: root.springD; epsilon: 0.5 } }
+                                        Behavior on height { SpringAnimation { spring: root.springK * 0.8; damping: root.springD * 0.85; epsilon: 0.5 } }
+
+                                        Text {
+                                            id: lab
+                                            anchors.centerIn: parent
+                                            text: modelData.label + (dt.applied ? "  ✓" : "")
+                                            color: modelData.bg
+                                            font.family: root.mono
+                                            font.pixelSize: 15 * win.u
+                                            font.weight: Font.DemiBold
+                                            opacity: dt.active ? 1 : 0
+                                            Behavior on opacity { NumberAnimation { duration: 180 } }
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        anchors.margins: -6 * win.u
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: dt.active ? root.apply(true) : root.go(index)
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // ---- strip: every theme folder as a rounded card
-                    ListView {
-                        id: strip
+                    // ---- palette of the selected theme
+                    Row {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        width: 896 * win.u
-                        height: win.th * 1.2 + 16 * win.u
-                        orientation: ListView.Horizontal
-                        model: root.themes
-                        currentIndex: root.sel
-                        interactive: false
-                        clip: true
-                        spacing: 14 * win.u
-                        highlightRangeMode: ListView.StrictlyEnforceRange
-                        preferredHighlightBegin: width / 2 - win.tw / 2
-                        preferredHighlightEnd: width / 2 + win.tw / 2
-                        highlightMoveDuration: 380
-
-                        delegate: Item {
-                            id: tile
-                            readonly property bool active: index === root.sel
-                            width: win.tw
-                            height: strip.height
-                            z: active ? 10 : 0
-
-                            Item {
-                                id: body
-                                width: win.tw
-                                height: win.th
-                                y: (strip.height - win.th) / 2
-
-                                // Stretch: width and height spring separately (slightly out of
-                                // step), so the card wobbles as it grows instead of just scaling.
-                                property real sx: tile.active ? 1.14 : 1
-                                property real sy: tile.active ? 1.14 : 1
-                                Behavior on sx { SpringAnimation { spring: root.springK; damping: root.springD; epsilon: 0.002 } }
-                                Behavior on sy { SpringAnimation { spring: root.springK * 0.8; damping: root.springD * 0.85; epsilon: 0.002 } }
-                                transform: Scale {
-                                    origin.x: body.width / 2
-                                    origin.y: body.height / 2
-                                    xScale: body.sx
-                                    yScale: body.sy
-                                }
-
-                                Image {
-                                    id: thumb
-                                    anchors.fill: parent
-                                    visible: false
-                                    source: modelData.image
-                                    fillMode: Image.PreserveAspectCrop
-                                    asynchronous: true
-                                    sourceSize.width: 320
-                                }
-
-                                Rectangle {
-                                    id: tileMask
-                                    anchors.fill: parent
-                                    radius: 16 * win.u
-                                    visible: false
-                                    layer.enabled: true
-                                    layer.samples: 4
-                                    color: "white"
-                                }
-
-                                // flat colour behind the picture while it loads
-                                Rectangle {
-                                    anchors.fill: parent
-                                    radius: 16 * win.u
-                                    color: modelData.bg
-                                }
-
-                                MultiEffect {
-                                    anchors.fill: parent
-                                    source: thumb
-                                    maskEnabled: true
-                                    maskSource: tileMask
-                                    opacity: tile.active ? 1 : 0.55
-                                    Behavior on opacity { NumberAnimation { duration: 260 } }
-                                }
-
-                                // edge: the selected card gets the theme's accent
-                                Rectangle {
-                                    anchors.fill: parent
-                                    radius: 16 * win.u
-                                    color: "transparent"
-                                    border.width: tile.active ? 2.5 : 1
-                                    border.color: tile.active ? modelData.accent : Qt.rgba(1, 1, 1, 0.2)
-                                }
-
-                                // small dot marks the theme that is applied right now
-                                Rectangle {
-                                    visible: modelData.name === root.currentName
-                                    width: 12 * win.u
-                                    height: 12 * win.u
-                                    radius: width / 2
-                                    x: parent.width - width - 8 * win.u
-                                    y: 8 * win.u
-                                    color: modelData.accent
-                                    border.width: 1.5
-                                    border.color: modelData.bg
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: tile.active ? root.apply(true) : root.go(index)
-                                }
+                        spacing: 8 * win.u
+                        Repeater {
+                            model: [root.cur.bg, root.cur.surface, root.cur.accent, root.cur.accentHi]
+                            delegate: Rectangle {
+                                width: 12 * win.u
+                                height: 12 * win.u
+                                radius: width / 2
+                                color: modelData
+                                border.width: 1
+                                border.color: Qt.rgba(1, 1, 1, 0.25)
                             }
                         }
                     }

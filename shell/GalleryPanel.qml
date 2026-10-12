@@ -1,6 +1,10 @@
 // File: ~/viii-shell-2/shell/GalleryPanel.qml
-//   qs ipc call gallery toggle
+// Gallery, lightbox style: the picture fills the whole window, everything else floats on it
+// and fades away when the mouse is still. Sharp corners, hairlines, small caps.
+//   qs ipc call gallery toggle | show | hide
 //   qs ipc call gallery open /path/to/folder
+// Keys: Left/Right browse, Home/End jump, Enter open in swayimg, C copy path, Esc close
+
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -12,6 +16,7 @@ Scope {
     property bool shown: false
     property bool alive: false
     readonly property int closeMs: 600
+    readonly property string mono: "JetBrainsMono Nerd Font"
 
     property string dir: Quickshell.env("HOME") + "/Pictures"
     property var files: []
@@ -41,6 +46,10 @@ Scope {
         if (files.length === 0) return
         idx = ((idx + d) % files.length + files.length) % files.length
     }
+    function openExternal() { if (cur) Quickshell.execDetached(["swayimg", cur.path]) }
+    function copyPath() {
+        if (cur) Quickshell.execDetached(["sh", "-c", "printf %s \"$1\" | wl-copy", "sh", cur.path])
+    }
     function hex(c) {
         const h = v => ("0" + Math.round(v * 255).toString(16)).slice(-2)
         return "#" + h(c.r) + h(c.g) + h(c.b)
@@ -53,9 +62,10 @@ Scope {
         const p = dir.split("/").filter(x => x !== "")
         return p.length > 0 ? p[p.length - 1] : "/"
     }
+    function pad(n, w) { return ("000" + n).slice(-w) }
     // Big number, small unit
     function sizeHtml(b, ns, us) {
-        const num = v => '<span style="font-size:' + ns + 'px; font-weight:600; color:' + hex(Theme.accentHi) + ';">' + v + '</span>'
+        const num = v => '<span style="font-size:' + ns + 'px; font-weight:600; color:' + hex(Theme.fg) + ';">' + v + '</span>'
         const unit = v => '<span style="font-size:' + us + 'px; color:' + hex(Theme.fgDim) + ';">' + v + '</span>'
         if (b >= 1048576) return num((b / 1048576).toFixed(1)) + unit("&nbsp;MB")
         return num(Math.max(1, Math.round(b / 1024))) + unit("&nbsp;KB")
@@ -66,6 +76,40 @@ Scope {
         if (s < 86400) return Math.floor(s / 3600) + "h ago"
         if (s < 86400 * 30) return Math.floor(s / 86400) + "d ago"
         return new Date(t * 1000).toISOString().slice(0, 10)
+    }
+
+    // Text button with an underline that draws in on hover
+    component Act: Item {
+        id: act
+        property string label: ""
+        property bool strong: false
+        signal clicked()
+        implicitWidth: lbl.implicitWidth
+        implicitHeight: 26
+        Text {
+            id: lbl
+            anchors.verticalCenter: parent.verticalCenter
+            text: act.label
+            color: (act.strong || hit.containsMouse) ? Theme.accentHi : Theme.fg
+            font.family: "JetBrainsMono Nerd Font"
+            font.pixelSize: 10
+            font.letterSpacing: 2
+            Behavior on color { ColorAnimation { duration: 120 } }
+        }
+        Rectangle {
+            anchors.bottom: parent.bottom
+            height: 1
+            width: hit.containsMouse ? parent.width : 0
+            color: Theme.accentHi
+            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        }
+        MouseArea {
+            id: hit
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: act.clicked()
+        }
     }
 
     Process {
@@ -96,221 +140,257 @@ Scope {
             id: win
             visible: root.shown
             title: "Gallery"
-            implicitWidth: 720
+            implicitWidth: 880
             implicitHeight: 700
             color: "transparent"
             onVisibleChanged: if (!visible) root.shown = false
 
-            ChamferPanel {
+            // Overlay visibility: shows on mouse movement, hides after a pause
+            property bool ui: true
+            readonly property bool showUi: ui || root.files.length === 0
+
+            Timer {
+                id: hideTimer
+                interval: 2600
+                onTriggered: win.ui = false
+            }
+            Component.onCompleted: hideTimer.restart()
+
+            Shortcut { sequence: "Home"; onActivated: root.idx = 0 }
+            Shortcut { sequence: "End"; onActivated: root.idx = Math.max(0, root.files.length - 1) }
+            Shortcut { sequence: "C"; onActivated: root.copyPath() }
+
+            Rectangle {
+                id: body
                 anchors.fill: parent
-                cut: 22
-                pattern: true
-                patternOpacity: 0.05
-                fillColor: Theme.panel
-                strokeColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
+                color: Qt.darker(Theme.panel, 1.7)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.14)
                 focus: true
+                clip: true
                 Keys.onEscapePressed: root.shown = false
                 Keys.onLeftPressed: root.step(-1)
                 Keys.onRightPressed: root.step(1)
-                Keys.onReturnPressed: if (root.cur) Quickshell.execDetached(["swayimg", root.cur.path])
+                Keys.onReturnPressed: root.openExternal()
 
-                ColumnLayout {
+                HoverHandler {
+                    onPointChanged: { win.ui = true; hideTimer.restart() }
+                }
+                WheelHandler {
+                    onWheel: (e) => { root.step(e.angleDelta.y > 0 ? -1 : 1); win.ui = true; hideTimer.restart() }
+                }
+
+                // ── The picture, edge to edge ──
+                Image {
+                    id: big
                     anchors.fill: parent
-                    anchors.margins: 22
-                    spacing: 14
+                    anchors.margins: 1
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                    cache: false
+                    sourceSize.width: 1800
+                    sourceSize.height: 1400
+                    source: root.cur ? root.url(root.cur.path) : ""
+                    opacity: status === Image.Ready ? 1 : 0
+                    scale: status === Image.Ready ? 1 : 1.015
+                    Behavior on opacity { NumberAnimation { duration: 220 } }
+                    Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+                }
 
-                    // ── Header ──
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
+                Text {
+                    anchors.centerIn: parent
+                    visible: root.files.length === 0
+                    text: "NO IMAGES IN  " + root.dir
+                    color: Theme.fgDim
+                    font.family: root.mono
+                    font.pixelSize: 11
+                    font.letterSpacing: 3
+                }
 
-                        HexShape {
-                            Layout.preferredWidth: 16
-                            Layout.preferredHeight: 16 / 1.1547
-                            fillColor: Theme.accent
+                // ── Click zones with edge arrows ──
+                MouseArea {
+                    id: leftZone
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.topMargin: 90
+                    anchors.bottomMargin: 200
+                    width: 110
+                    hoverEnabled: true
+                    visible: root.files.length > 1
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.step(-1)
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 22
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "\uf053"
+                        color: Theme.fg
+                        font.family: root.mono
+                        font.pixelSize: 22
+                        opacity: leftZone.containsMouse ? 1 : (win.showUi ? 0.35 : 0)
+                        Behavior on opacity { NumberAnimation { duration: 180 } }
+                    }
+                }
+                MouseArea {
+                    id: rightZone
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.topMargin: 90
+                    anchors.bottomMargin: 200
+                    width: 110
+                    hoverEnabled: true
+                    visible: root.files.length > 1
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.step(1)
+                    Text {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 22
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "\uf054"
+                        color: Theme.fg
+                        font.family: root.mono
+                        font.pixelSize: 22
+                        opacity: rightZone.containsMouse ? 1 : (win.showUi ? 0.35 : 0)
+                        Behavior on opacity { NumberAnimation { duration: 180 } }
+                    }
+                }
+
+                // ── Top bar: folder + counter ──
+                Item {
+                    id: topBar
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: 96
+                    opacity: win.showUi ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 260 } }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.72) }
+                            GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0) }
+                        }
+                    }
+
+                    ColumnLayout {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.leftMargin: 28
+                        anchors.topMargin: 22
+                        spacing: 2
+                        Text {
+                            text: "GALLERY"
+                            color: Theme.accentHi
+                            font.family: root.mono
+                            font.pixelSize: 9
+                            font.letterSpacing: 4
                         }
                         Text {
-                            text: "Gallery"
+                            text: root.folderName()
                             color: Theme.fg
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 17
-                            font.weight: Font.DemiBold
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: "/ " + root.folderName()
-                            color: Theme.fgDim
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 12
-                            elide: Text.ElideRight
-                        }
-                        HexButton {
-                            Layout.preferredWidth: 28 * 1.1547
-                            Layout.preferredHeight: 28
-                            size: 28; glyphSize: 12
-                            outlined: true
-                            glyph: "\uf021"
-                            onClicked: root.reload()
+                            font.family: root.mono
+                            font.pixelSize: 24
+                            font.weight: Font.Light
                         }
                     }
 
-                    // ── Preview ──
-                    ChamferPanel {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        cut: 16
-                        fillColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.55)
-                        strokeColor: Theme.line
-
-                        WheelHandler {
-                            onWheel: (e) => root.step(e.angleDelta.y > 0 ? -1 : 1)
-                        }
-
-                        Image {
-                            id: big
-                            anchors.fill: parent
-                            anchors.margins: 14
-                            fillMode: Image.PreserveAspectFit
-                            asynchronous: true
-                            cache: false
-                            sourceSize.width: 1400
-                            sourceSize.height: 1000
-                            source: root.cur ? root.url(root.cur.path) : ""
-                            opacity: status === Image.Ready ? 1 : 0
-                            Behavior on opacity { NumberAnimation { duration: 160 } }
-                        }
-
-                        Text {
-                            anchors.centerIn: parent
-                            visible: root.files.length === 0
-                            text: "No images in " + root.dir
-                            color: Theme.fgDim
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 12
-                        }
-
-                        // Prev / next
-                        HexButton {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 14
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 34 * 1.1547; height: 34
-                            size: 34; glyphSize: 13
-                            outlined: true
-                            visible: root.files.length > 1
-                            glyph: "\uf053"
-                            onClicked: root.step(-1)
-                        }
-                        HexButton {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 14
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 34 * 1.1547; height: 34
-                            size: 34; glyphSize: 13
-                            outlined: true
-                            visible: root.files.length > 1
-                            glyph: "\uf054"
-                            onClicked: root.step(1)
-                        }
-                    }
-
-                    // ── Info + actions ──
                     RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 14
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.rightMargin: 28
+                        anchors.topMargin: 26
+                        spacing: 22
+
+                        Text {
+                            visible: root.files.length > 0
+                            textFormat: Text.RichText
+                            font.family: root.mono
+                            text: '<span style="font-size:24px; font-weight:300; color:' + root.hex(Theme.fg) + ';">'
+                                  + root.pad(root.idx + 1, 2)
+                                  + '</span><span style="font-size:11px; color:' + root.hex(Theme.fgDim) + ';">&nbsp;/&nbsp;'
+                                  + root.pad(root.files.length, 2) + '</span>'
+                        }
+                        Act { label: "REFRESH"; onClicked: root.reload() }
+                    }
+                }
+
+                // ── Bottom bar: details, actions, filmstrip ──
+                Item {
+                    id: bottomBar
+                    anchors.bottom: parent.bottom
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: 190
+                    opacity: win.showUi ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 260 } }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0) }
+                            GradientStop { position: 0.55; color: Qt.rgba(0, 0, 0, 0.72) }
+                            GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.88) }
+                        }
+                    }
+
+                    // Info row
+                    RowLayout {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.leftMargin: 28
+                        anchors.rightMargin: 28
+                        anchors.topMargin: 38
+                        spacing: 22
+                        visible: root.cur !== null
 
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 0
+                            spacing: 2
                             Text {
                                 Layout.fillWidth: true
-                                text: root.cur ? root.base(root.cur.path) : "—"
+                                text: root.cur ? root.base(root.cur.path) : ""
                                 color: Theme.fg
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 14
-                                font.weight: Font.DemiBold
+                                font.family: root.mono
+                                font.pixelSize: 15
                                 elide: Text.ElideMiddle
                             }
                             Text {
-                                Layout.fillWidth: true
-                                text: root.cur
-                                      ? root.ago(root.cur.t) + "  ·  " + (root.idx + 1) + " / " + root.files.length
-                                      : ""
+                                text: root.cur ? root.ago(root.cur.t).toUpperCase() : ""
                                 color: Theme.fgDim
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 10
+                                font.family: root.mono
+                                font.pixelSize: 9
+                                font.letterSpacing: 2.5
                             }
                         }
-
                         Text {
                             textFormat: Text.RichText
-                            font.family: "JetBrainsMono Nerd Font"
-                            text: root.cur ? root.sizeHtml(root.cur.size, 30, 12) : ""
+                            font.family: root.mono
+                            text: root.cur ? root.sizeHtml(root.cur.size, 22, 10) : ""
                         }
-
-                        Rectangle {
-                            Layout.preferredWidth: 42
-                            Layout.preferredHeight: 36
-                            radius: 18
-                            visible: root.cur !== null
-                            color: cpHit.containsMouse ? Theme.surfaceHi : Qt.rgba(1, 1, 1, 0.06)
-                            border.width: 1
-                            border.color: Theme.line
-                            Text {
-                                anchors.centerIn: parent
-                                text: "\uf0c5"
-                                color: Theme.fgDim
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 13
-                            }
-                            MouseArea {
-                                id: cpHit
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: Quickshell.execDetached(["sh", "-c", "printf %s \"$1\" | wl-copy", "sh", root.cur.path])
-                            }
-                        }
-
-                        Rectangle {
-                            Layout.preferredWidth: openText.implicitWidth + 32
-                            Layout.preferredHeight: 36
-                            radius: 18
-                            visible: root.cur !== null
-                            color: openHit.containsMouse ? Theme.accentHi : Theme.accent
-                            Behavior on color { ColorAnimation { duration: 120 } }
-                            Text {
-                                id: openText
-                                anchors.centerIn: parent
-                                text: "Open in swayimg"
-                                color: Theme.accentText
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 11
-                                font.weight: Font.DemiBold
-                            }
-                            MouseArea {
-                                id: openHit
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: Quickshell.execDetached(["swayimg", root.cur.path])
-                            }
-                        }
+                        Act { label: "COPY PATH"; onClicked: root.copyPath() }
+                        Act { label: "OPEN IN SWAYIMG  \uf08e"; strong: true; onClicked: root.openExternal() }
                     }
 
-                    // ── Thumbnail strip ──
+                    // Filmstrip: the selected frame opens up, the rest stay narrow
                     ListView {
                         id: strip
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 92
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 22
+                        height: 56
                         orientation: ListView.Horizontal
                         clip: true
-                        spacing: 8
+                        spacing: 4
                         model: root.files
                         currentIndex: root.idx
-                        highlightMoveDuration: 220
-                        preferredHighlightBegin: width / 2 - 46
-                        preferredHighlightEnd: width / 2 + 46
+                        highlightMoveDuration: 260
+                        preferredHighlightBegin: width / 2 - 42
+                        preferredHighlightEnd: width / 2 + 42
                         highlightRangeMode: ListView.ApplyRange
                         boundsBehavior: Flickable.StopAtBounds
 
@@ -319,36 +399,30 @@ Scope {
                             required property var modelData
                             required property int index
                             readonly property bool sel: index === root.idx
-                            width: 92
-                            height: 92
+                            width: sel ? 84 : 36
+                            height: 56
+                            Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-                            ChamferPanel {
+                            Image {
                                 anchors.fill: parent
-                                cut: 10
-                                fillColor: th.sel
-                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
-                                    : Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.6)
-                                strokeColor: th.sel ? Theme.accent : Theme.line
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                sourceSize.width: 180
+                                sourceSize.height: 120
+                                source: root.url(th.modelData.path)
+                                opacity: th.sel ? 1 : (tHit.containsMouse ? 0.85 : 0.45)
+                                Behavior on opacity { NumberAnimation { duration: 140 } }
                             }
+                            // Selection underline
                             Rectangle {
-                                anchors.fill: parent
-                                anchors.margins: 6
-                                radius: 6
-                                color: "transparent"
-                                clip: true
-                                Image {
-                                    anchors.fill: parent
-                                    fillMode: Image.PreserveAspectCrop
-                                    asynchronous: true
-                                    sourceSize.width: 160
-                                    sourceSize.height: 160
-                                    source: root.url(th.modelData.path)
-                                    opacity: th.sel || tHit.containsMouse ? 1 : 0.72
-                                    Behavior on opacity { NumberAnimation { duration: 120 } }
-                                }
+                                anchors.bottom: parent.bottom
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                height: 2
+                                color: Theme.accentHi
+                                opacity: th.sel ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: 140 } }
                             }
-                            scale: th.sel ? 1 : 0.94
-                            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
                             MouseArea {
                                 id: tHit
                                 anchors.fill: parent
