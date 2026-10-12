@@ -29,4 +29,5 @@ ShellRoot {
     TrimPanel {}
     OmniLauncher {}
     GalleryPanel {}
+    NotesPanel {}
 }
