@@ -22,9 +22,9 @@ Scope {
         imageSupported: true        // avatars / album art sent by apps
 
         onNotification: n => {
+            console.log("notification:", n.appName, "|", n.summary)   // temporary debug line
             if (root.dnd && n.urgency !== NotificationUrgency.Critical)
                 return
-            // "tracked" means: keep it alive and list it in trackedNotifications
             n.tracked = true
         }
     }
@@ -52,30 +52,31 @@ Scope {
 
         // 48px wider than a card: slack for the slide-in overshoot
         implicitWidth: 420
-        implicitHeight: list.contentHeight
+        implicitHeight: Math.max(list.height, 1)
         color: "transparent"
-        visible: list.count > 0     // nothing on screen when idle, no idle cost
+        visible: repeater.count > 0     // nothing on screen when idle, no idle cost
 
         exclusionMode: ExclusionMode.Ignore       // don't push other windows around
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "viii-notifications"
 
-        ListView {
+                Column {
             id: list
             anchors { top: parent.top; right: parent.right }
             width: 372
-            height: contentHeight
             spacing: 10
-            interactive: false
 
             // ScriptModel + reverse() puts the newest notification on top
-            model: ScriptModel {
-                values: [...server.trackedNotifications.values].reverse()
+            Repeater {
+                id: repeater
+                model: ScriptModel {
+                    values: [...server.trackedNotifications.values].reverse()
+                }
+                delegate: NotificationCard {}
             }
-            delegate: NotificationCard {}
 
             // when a card goes away, the ones below slide up smoothly
-            displaced: Transition {
+            move: Transition {
                 NumberAnimation { properties: "y"; duration: 220; easing.type: Easing.OutCubic }
             }
         }

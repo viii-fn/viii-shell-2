@@ -27,7 +27,7 @@ Item {
     property bool closing: false
     property real remaining: 1      // 1 -> 0, drives the timer bar
 
-    width: ListView.view.width
+    width: parent.width
     height: panel.height
 
     function iconSource() {
@@ -181,7 +181,7 @@ Item {
                             id: label
                             anchors.centerIn: parent
                             text: parent.modelData.text
-                            color: btn.containsMouse ? Theme.onAccent : Theme.accentHi
+                            color: btn.containsMouse ? Theme.accentText : Theme.accentHi
                             font { pixelSize: 12; bold: true }
                         }
                         MouseArea {
