@@ -480,6 +480,7 @@ Scope {
                             }
 
                             // Stacked app bar (thick): top 6 apps
+                            // Stacked app bar: every app, tiny ones get a minimum sliver
                             Rectangle {
                                 id: shareHost
                                 Layout.fillWidth: true
@@ -487,20 +488,23 @@ Scope {
                                 radius: 14
                                 color: Qt.alpha(Theme.surfaceHi, 0.5)
                                 visible: root.apps.length > 0
-
+                                clip: true
+                            
                                 Row {
                                     anchors.fill: parent
-                                    spacing: 2
+                                    spacing: 2                      // was 1, a bit more air so the rounded ends read clearly
+                                
                                     Repeater {
-                                        model: root.apps.slice(0, 6)
-
+                                        model: root.apps
+                                
                                         Rectangle {
                                             required property var modelData
                                             required property int index
                                             height: shareHost.height
-                                            radius: 8
-                                            width: Math.max(0, (shareHost.width - Math.max(0, Math.min(6, root.apps.length) - 1) * 2) * (modelData.secs / root.denom) * root.progress)
+                                            radius: height / 2      // was 3. Half the height = fully rounded pill ends
+                                            width: Math.max(3, shareHost.width * (modelData.secs / root.denom) * root.progress)
                                             color: root.palette[index % root.palette.length]
+                                            opacity: index < root.palette.length ? 1 : 0.6
                                         }
                                     }
                                 }
