@@ -481,28 +481,41 @@ Scope {
 
                             // Stacked app bar (thick): top 6 apps
                             // Stacked app bar: every app, tiny ones get a minimum sliver
+                            // Stacked app bar: every app fits inside the bar, tiny ones keep a minimum sliver
                             Rectangle {
                                 id: shareHost
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 28
-                                radius: 14
+                                radius: height / 2
                                 color: Qt.alpha(Theme.surfaceHi, 0.5)
                                 visible: root.apps.length > 0
                                 clip: true
                             
+                                readonly property real gap: 2
+                                readonly property real minW: 4
+                                readonly property int n: root.apps.length
+                            
+                                // Space left after the gaps and every app's guaranteed minimum width.
+                                // Only this leftover is shared out by time, so the total can never exceed the bar.
+                                readonly property real spare: Math.max(0, width - Math.max(0, n - 1) * gap - n * minW)
+                            
+                                // Use whichever is larger, so the shares never add up to more than 100%
+                                readonly property real shareTotal: Math.max(root.denom, root.apps.reduce((s, a) => s + a.secs, 0))
+                            
                                 Row {
                                     anchors.fill: parent
-                                    spacing: 2                      // was 1, a bit more air so the rounded ends read clearly
-                                
+                                    spacing: shareHost.gap
+                            
                                     Repeater {
                                         model: root.apps
-                                
+                            
                                         Rectangle {
                                             required property var modelData
                                             required property int index
                                             height: shareHost.height
-                                            radius: height / 2      // was 3. Half the height = fully rounded pill ends
-                                            width: Math.max(3, shareHost.width * (modelData.secs / root.denom) * root.progress)
+                                            radius: height / 2
+                                            // minimum + proportional share of the spare space
+                                            width: shareHost.minW + shareHost.spare * (modelData.secs / shareHost.shareTotal) * root.progress
                                             color: root.palette[index % root.palette.length]
                                             opacity: index < root.palette.length ? 1 : 0.6
                                         }
