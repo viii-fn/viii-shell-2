@@ -8,6 +8,7 @@ HexButton HexButton.qml
 HexPattern HexPattern.qml
 HexShape HexShape.qml
 HexSlider HexSlider.qml
+HexBtn HexButton.qml
 Island Island.qml
 MusicCard MusicCard.qml
 MusicPanel MusicPanel.qml
@@ -26,3 +27,5 @@ Glass Glass.qml
 IconBtn IconBtn.qml
 StatBlock StatBlock.qml
 PillBtn PillBtn.qml
+NotificationPopups NotificationPopups.qml
+NotificationCard NotificationCard.qml

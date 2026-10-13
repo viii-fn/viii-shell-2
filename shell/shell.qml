@@ -31,4 +31,5 @@ ShellRoot {
     NotesPanel {}
     WeatherPanel {}
     QuickSettings {}
+    NotificationPopups {}
 }
