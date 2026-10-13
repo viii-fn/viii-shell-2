@@ -55,7 +55,7 @@ Scope {
     property string heatTip: "Hover a day for details"
 
     // Daily goal (6h). Change to taste.
-    readonly property int goalDay: 6 * 3600
+    readonly property int goalDay: 10 * 3600
     readonly property int goal: range === 7 ? goalDay * 7 : goalDay
     readonly property real goalFrac: totalSecs / goal
 
