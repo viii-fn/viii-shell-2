@@ -1,7 +1,8 @@
 // File: ~/viii-shell-2/shell/Island.qml
 // A glass notch attached to the top edge of the screen: network, battery
 // (with the charging sequence), clock, music (only while a player exists)
-// and open-window icons. Bottom corners are rounded, the top is square.
+// and open-window icons. Top corners flare outward into the screen edge,
+// bottom corners are rounded.
 // Every color comes from Theme.*, so theme switches fade this too.
 
 import Quickshell
@@ -10,6 +11,7 @@ import Quickshell.Wayland            // ToplevelManager: list of open windows
 import Quickshell.Services.Mpris     // music players
 import Quickshell.Services.UPower    // battery + charging state
 import QtQuick
+import QtQuick.Shapes                // Shape: draws the notch outline
 import QtQuick.Effects               // MultiEffect: rounds the album art corners
 
 PanelWindow {
@@ -28,8 +30,9 @@ PanelWindow {
     readonly property string font: "JetBrainsMono Nerd Font"
 
     // --- Shape and timing: tweak these -----------------------------------
-    readonly property real corner: 22      // bottom corner roundness
-    readonly property real pad: 22         // inner padding left/right (keep >= corner)
+    readonly property real flare: 30       // how far the top corners flare outward
+    readonly property real corner: 16      // roundness of the bottom corners
+    readonly property real pad: 10         // inner padding left/right
     readonly property real gap: 30         // space between sections
     readonly property int animMs: 380      // expand/shrink duration
 
@@ -88,7 +91,7 @@ PanelWindow {
         // Width = sum of each section's final width. It is animated here, and
         // the sections animate with the same duration and curve, so they stay
         // in sync and nothing spills outside.
-        width: 2 * win.pad
+        width: 2 * win.flare + 2 * win.pad
              + wifiSec.target + batSec.target + chargeSec.target
              + clockSec.target + musicSec.target + winSec.target
         Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
@@ -106,34 +109,102 @@ PanelWindow {
             ScriptAction { script: win.chargeSpace = false }
         }
 
-        // Glass body. It starts `corner` pixels ABOVE the screen edge, so its top
-        // rounded corners are cut off by the window edge and only the bottom ones show.
-        Rectangle {
-            id: glass
-            y: -win.corner
-            width: parent.width
-            height: parent.height + win.corner
-            radius: win.corner
-            color: Qt.alpha(Theme.panel, 0.72)
-            border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.16)
+        // Glass body drawn as one Shape with three layers:
+        // 1) translucent fill, 2) specular sheen, 3) thin border (sides only,
+        // so no line runs along the screen edge).
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer      // smooth edges
 
-            // Specular sheen: a soft highlight fading down from the visible top edge.
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: 1
-                radius: parent.radius - 1
-                gradient: Gradient {
-                    GradientStop { position: win.corner / glass.height; color: Qt.rgba(1, 1, 1, 0.14) }
+            // 1) glass fill
+            ShapePath {
+                strokeWidth: -1                       // fill only
+                fillColor: Qt.alpha(Theme.panel, 0.72)
+                startX: 0; startY: 0
+
+                PathLine { x: island.width; y: 0 }                                        // top edge
+                PathQuad { x: island.width - win.flare; y: win.flare
+                           controlX: island.width - win.flare; controlY: 0 }               // right flare
+                PathLine { x: island.width - win.flare; y: island.height - win.corner }   // right side
+                PathArc {
+                    x: island.width - win.flare - win.corner; y: island.height
+                    radiusX: win.corner; radiusY: win.corner
+                    direction: PathArc.Clockwise
+                }
+                PathLine { x: win.flare + win.corner; y: island.height }                  // bottom edge
+                PathArc {
+                    x: win.flare; y: island.height - win.corner
+                    radiusX: win.corner; radiusY: win.corner
+                    direction: PathArc.Clockwise
+                }
+                PathLine { x: win.flare; y: win.flare }                                   // left side
+                PathQuad { x: 0; y: 0; controlX: win.flare; controlY: 0 }                 // left flare
+            }
+
+            // 2) sheen: a soft highlight fading down from the top edge
+            ShapePath {
+                strokeWidth: -1                       // fill only
+                fillGradient: LinearGradient {
+                    x1: 0; y1: 0; x2: 0; y2: island.height
+                    GradientStop { position: 0.0;  color: Qt.rgba(1, 1, 1, 0.14) }
                     GradientStop { position: 0.85; color: Qt.rgba(1, 1, 1, 0.0) }
                 }
+                startX: 0; startY: 0
+
+                PathLine { x: island.width; y: 0 }                                        // top edge
+                PathQuad { x: island.width - win.flare; y: win.flare
+                           controlX: island.width - win.flare; controlY: 0 }               // right flare
+                PathLine { x: island.width - win.flare; y: island.height - win.corner }   // right side
+                PathArc {
+                    x: island.width - win.flare - win.corner; y: island.height
+                    radiusX: win.corner; radiusY: win.corner
+                    direction: PathArc.Clockwise
+                }
+                PathLine { x: win.flare + win.corner; y: island.height }                  // bottom edge
+                PathArc {
+                    x: win.flare; y: island.height - win.corner
+                    radiusX: win.corner; radiusY: win.corner
+                    direction: PathArc.Clockwise
+                }
+                PathLine { x: win.flare; y: win.flare }                                   // left side
+                PathQuad { x: 0; y: 0; controlX: win.flare; controlY: 0 }                 // left flare
+            }
+
+            // 3) border: same outline but open at the top (starts at the right
+            // top corner and ends at the left one)
+            ShapePath {
+                fillColor: "transparent"
+                strokeColor: Qt.rgba(1, 1, 1, 0.16)
+                strokeWidth: 1
+                startX: island.width; startY: 0
+
+                PathQuad {
+                    x: island.width - win.flare; y: win.flare
+                    controlX: island.width - win.flare; controlY: 0
+                }
+                PathLine { x: island.width - win.flare; y: island.height - win.corner }
+                PathArc {
+                    x: island.width - win.flare - win.corner; y: island.height
+                    radiusX: win.corner; radiusY: win.corner
+                    direction: PathArc.Clockwise
+                }
+                PathLine { x: win.flare + win.corner; y: island.height }
+                PathArc {
+                    x: win.flare; y: island.height - win.corner
+                    radiusX: win.corner; radiusY: win.corner
+                    direction: PathArc.Clockwise
+                }
+                PathLine { x: win.flare; y: win.flare }
+                PathQuad { x: 0; y: 0; controlX: win.flare; controlY: 0 }
             }
         }
 
-        // Everything inside is clipped to the body, so nothing can ever draw
-        // outside the notch while it is growing or shrinking.
+        // Everything inside is clipped to the straight-sided body (the flares
+        // are decoration only), so nothing draws outside the notch.
         Item {
-            anchors.fill: parent
+            x: win.flare
+            width: island.width - 2 * win.flare
+            height: island.height
             clip: true
 
             // A left-to-right row of sections. Each section's width includes the
@@ -243,7 +314,7 @@ PanelWindow {
                     }
                 }
 
-                // 5. MUSIC: rounded album art, title, play/pause
+                // 5. MUSIC: rounded album art, title, prev / play / next
                 Item {
                     id: musicSec
                     property bool want: win.player !== null
@@ -307,23 +378,46 @@ PanelWindow {
                             text: win.player ? win.player.trackTitle : ""
                         }
 
-                        // Play / pause: a round accent button.
-                        Rectangle {
-                            width: 24; height: 24; radius: 12
+                        // Prev / play-pause (round accent button) / next.
+                        Row {
                             anchors.verticalCenter: parent.verticalCenter
-                            color: Theme.accent
-                            opacity: playArea.containsMouse ? 0.85 : 1
-                            Text {
-                                anchors.centerIn: parent
-                                font.family: win.font; font.pixelSize: 10
-                                color: Theme.accentText
-                                text: (win.player && win.player.isPlaying) ? "\uf04c" : "\uf04b"
-                            }
-                            MouseArea {
-                                id: playArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                onClicked: if (win.player) win.player.togglePlaying()
+                            spacing: 2
+
+                            Repeater {
+                                model: ["prev", "play", "next"]
+                                delegate: Item {
+                                    id: ctl
+                                    required property string modelData
+                                    readonly property bool isPlay: modelData === "play"
+                                    width: 24; height: 24
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        radius: width / 2
+                                        color: ctl.isPlay ? Theme.accent
+                                                          : Qt.rgba(1, 1, 1, ctlArea.containsMouse ? 0.16 : 0)
+                                        opacity: ctl.isPlay && ctlArea.containsMouse ? 0.85 : 1
+                                    }
+                                    Text {
+                                        anchors.centerIn: parent
+                                        font.family: win.font; font.pixelSize: 10
+                                        color: ctl.isPlay ? Theme.accentText : Theme.fg
+                                        text: ctl.modelData === "prev" ? "\uf048"
+                                            : (ctl.isPlay ? ((win.player && win.player.isPlaying) ? "\uf04c" : "\uf04b")
+                                                          : "\uf051")
+                                    }
+                                    MouseArea {
+                                        id: ctlArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        onClicked: {
+                                            if (!win.player) return
+                                            if (ctl.modelData === "prev") win.player.previous()
+                                            else if (ctl.isPlay) win.player.togglePlaying()
+                                            else win.player.next()
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
