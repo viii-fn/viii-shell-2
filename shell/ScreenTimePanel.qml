@@ -517,66 +517,123 @@ Scope {
                             }
 
                             // App grid: each name takes its color from the bar above
-                            GridLayout {
+                            // App grid: 2 rows, flowing left to right, scrolls horizontally.
+                            // Each name takes its color from the bar above.
+                            Item {
+                                id: appArea
                                 Layout.fillWidth: true
+                                Layout.preferredHeight: 2 * 46 + 8 + (appFlick.contentWidth > appFlick.width + 1 ? 12 : 0)
                                 visible: root.apps.length > 0
-                                columns: 2
-                                rowSpacing: 8
-                                columnSpacing: 8
-
-                                Repeater {
-                                    model: root.apps.slice(0, 6)
-
-                                    Glass {
-                                        id: cell
-                                        required property var modelData
-                                        required property int index
-                                        readonly property color tone: root.palette[index % root.palette.length]
-                                        Layout.fillWidth: true
-                                        Layout.preferredWidth: 1
-                                        Layout.preferredHeight: 46
-                                        radius: 14
-                                        opacity: root.lp(index, Math.min(6, root.apps.length))
-
-                                        RowLayout {
-                                            anchors.fill: parent
-                                            anchors.leftMargin: 14
-                                            anchors.rightMargin: 14
-                                            spacing: 8
-
-                                            Rectangle {
-                                                Layout.preferredWidth: 8
-                                                Layout.preferredHeight: 8
-                                                radius: 4
-                                                color: cell.tone
-                                            }
-                                            Text {
-                                                Layout.fillWidth: true
-                                                text: root.pretty(cell.modelData.name)
-                                                color: cell.tone
-                                                font.family: root.mono
-                                                font.pixelSize: 13
-                                                font.weight: Font.DemiBold
-                                                elide: Text.ElideRight
-                                            }
-                                            ColumnLayout {
-                                                spacing: 0
-                                                Text {
-                                                    Layout.alignment: Qt.AlignRight
-                                                    text: root.fmtTo(Math.round(cell.modelData.secs * root.progress), cell.modelData.secs)
-                                                    color: Theme.fg
-                                                    font.family: root.mono
-                                                    font.pixelSize: 12
-                                                }
-                                                Text {
-                                                    Layout.alignment: Qt.AlignRight
-                                                    text: Math.round(cell.modelData.secs / root.denom * 100 * root.progress) + "%"
-                                                    color: Theme.fgDim
-                                                    font.family: root.mono
-                                                    font.pixelSize: 9
+                            
+                                // Each cell is half the visible width, so 2 columns show at a time
+                                readonly property real cellW: (appFlick.width - 8) / 2
+                            
+                                Flickable {
+                                    id: appFlick
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    height: 2 * 46 + 8
+                                    clip: true
+                                    contentWidth: appGrid.width
+                                    contentHeight: height
+                                    flickableDirection: Flickable.HorizontalFlick
+                                    boundsBehavior: Flickable.StopAtBounds
+                            
+                                    // Mouse wheel / touchpad scrolls sideways (Flickable only does vertical by default)
+                                    WheelHandler {
+                                        onWheel: event => {
+                                            const d = event.angleDelta.y !== 0 ? event.angleDelta.y : event.angleDelta.x
+                                            const maxX = Math.max(0, appFlick.contentWidth - appFlick.width)
+                                            appFlick.contentX = Math.max(0, Math.min(maxX, appFlick.contentX - d))
+                                        }
+                                    }
+                            
+                                    Grid {
+                                        id: appGrid
+                                        rows: 2
+                                        flow: Grid.TopToBottom        // fill down the column first, then move right
+                                        rowSpacing: 8
+                                        columnSpacing: 8
+                                        // columns needed = ceil(apps / 2); width = columns * cell + gaps
+                                        width: Math.ceil(root.apps.length / 2) * appArea.cellW
+                                               + Math.max(0, Math.ceil(root.apps.length / 2) - 1) * columnSpacing
+                            
+                                        Repeater {
+                                            model: root.apps
+                            
+                                            Glass {
+                                                id: cell
+                                                required property var modelData
+                                                required property int index
+                                                readonly property color tone: root.palette[index % root.palette.length]
+                                                width: appArea.cellW
+                                                height: 46
+                                                radius: 14
+                                                // Cap the stagger at 6 so far-away cells don't animate in late
+                                                opacity: root.lp(Math.min(index, 5), 6)
+                            
+                                                RowLayout {
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: 14
+                                                    anchors.rightMargin: 14
+                                                    spacing: 8
+                            
+                                                    Rectangle {
+                                                        Layout.preferredWidth: 8
+                                                        Layout.preferredHeight: 8
+                                                        radius: 4
+                                                        color: cell.tone
+                                                    }
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        text: root.pretty(cell.modelData.name)
+                                                        color: cell.tone
+                                                        font.family: root.mono
+                                                        font.pixelSize: 13
+                                                        font.weight: Font.DemiBold
+                                                        elide: Text.ElideRight
+                                                    }
+                                                    ColumnLayout {
+                                                        spacing: 0
+                                                        Text {
+                                                            Layout.alignment: Qt.AlignRight
+                                                            text: root.fmtTo(Math.round(cell.modelData.secs * root.progress), cell.modelData.secs)
+                                                            color: Theme.fg
+                                                            font.family: root.mono
+                                                            font.pixelSize: 12
+                                                        }
+                                                        Text {
+                                                            Layout.alignment: Qt.AlignRight
+                                                            text: Math.round(cell.modelData.secs / root.denom * 100 * root.progress) + "%"
+                                                            color: Theme.fgDim
+                                                            font.family: root.mono
+                                                            font.pixelSize: 9
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
+                                    }
+                                }
+                            
+                                // Thin scroll indicator, only shown when there's more to scroll to
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: 4
+                                    radius: 2
+                                    color: Qt.alpha(Theme.surfaceHi, 0.5)
+                                    visible: appFlick.contentWidth > appFlick.width + 1
+                            
+                                    Rectangle {
+                                        height: parent.height
+                                        radius: 2
+                                        color: Theme.accent
+                                        width: Math.max(24, parent.width * appFlick.width / Math.max(1, appFlick.contentWidth))
+                                        x: (parent.width - width) * appFlick.contentX
+                                            / Math.max(1, appFlick.contentWidth - appFlick.width)
                                     }
                                 }
                             }
