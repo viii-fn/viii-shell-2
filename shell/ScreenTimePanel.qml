@@ -634,23 +634,66 @@ Scope {
                                     }
                                 }
                             
-                                // Thin scroll indicator, only shown when there's more to scroll to
-                                Rectangle {
+                                // Scroll bar for the app grid: drag the thumb, or click the track to jump.
+                                // The Item is 12px tall (easy to hit); the visible bar inside stays thin.
+                                // 12px is also exactly the extra height appArea reserves when scrollable.
+                                Item {
+                                    id: scrollBar
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.bottom: parent.bottom
-                                    height: 4
-                                    radius: 2
-                                    color: Qt.alpha(Theme.surfaceHi, 0.5)
+                                    height: 12
                                     visible: appFlick.contentWidth > appFlick.width + 1
-                            
+                                
+                                    // How far the content can scroll, and how big / how far the thumb moves
+                                    readonly property real maxX: Math.max(1, appFlick.contentWidth - appFlick.width)
+                                    readonly property real thumbW: Math.max(24, width * appFlick.width / Math.max(1, appFlick.contentWidth))
+                                    readonly property real travel: Math.max(1, width - thumbW)
+                                
+                                    // Track
                                     Rectangle {
-                                        height: parent.height
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        height: 4
                                         radius: 2
-                                        color: Theme.accent
-                                        width: Math.max(24, parent.width * appFlick.width / Math.max(1, appFlick.contentWidth))
-                                        x: (parent.width - width) * appFlick.contentX
-                                            / Math.max(1, appFlick.contentWidth - appFlick.width)
+                                        color: Qt.alpha(Theme.surfaceHi, 0.5)
+                                    }
+                                
+                                    // Thumb: its position is driven by contentX, so trackpad scrolling still moves it
+                                    Rectangle {
+                                        id: thumb
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: scrollBar.thumbW
+                                        height: (barMouse.pressed || barMouse.containsMouse) ? 6 : 4
+                                        radius: height / 2
+                                        color: barMouse.pressed ? Theme.accentHi : Theme.accent
+                                        x: scrollBar.travel * appFlick.contentX / scrollBar.maxX
+                                        Behavior on height { NumberAnimation { duration: 100 } }
+                                    }
+                                
+                                    MouseArea {
+                                        id: barMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                
+                                        // Where inside the thumb you grabbed it, so it doesn't jump under the cursor
+                                        property real grabOffset: 0
+                                
+                                        // Turn a mouse x position into a contentX (clamped between 0 and the max)
+                                        function scrollTo(mx) {
+                                            const frac = Math.max(0, Math.min(1, (mx - grabOffset) / scrollBar.travel))
+                                            appFlick.contentX = frac * scrollBar.maxX
+                                        }
+                                
+                                        onPressed: mouse => {
+                                            const onThumb = mouse.x >= thumb.x && mouse.x <= thumb.x + thumb.width
+                                            // On the thumb: keep your grab point. On the empty track: center the thumb there.
+                                            grabOffset = onThumb ? mouse.x - thumb.x : scrollBar.thumbW / 2
+                                            scrollTo(mouse.x)
+                                        }
+                                        onPositionChanged: mouse => { if (pressed) scrollTo(mouse.x) }
                                     }
                                 }
                             }
