@@ -30,3 +30,4 @@ PillBtn PillBtn.qml
 NotificationPopups NotificationPopups.qml
 NotificationCard NotificationCard.qml
 HairSlider HairSlider.qml
+IslandNotif IslandNotif.qml

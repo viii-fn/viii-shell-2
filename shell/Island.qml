@@ -1,15 +1,20 @@
 // File: ~/viii-shell-2/shell/Island.qml
 // A glass notch attached to the top edge of the screen: network, battery
-// (with the charging sequence), clock, music (only while a player exists)
-// and open-window icons. Top corners flare outward into the screen edge,
-// bottom corners are rounded.
+// (with the charging sequence), clock, music (only while a player exists),
+// open-window icons and a notification bell. Top corners flare outward into
+// the screen edge, bottom corners are rounded.
+// It also IS the notification center: new notifications stretch it downward
+// (same shape, just taller), and the bell opens the full list.
+//   qs ipc call island notifications      toggle the list
+// Tap the clock for the date, tap the battery percent for time left.
 // Every color comes from Theme.*, so theme switches fade this too.
 
 import Quickshell
-import Quickshell.Io                 // Process: run shell commands
+import Quickshell.Io                 // Process, IpcHandler
 import Quickshell.Wayland            // ToplevelManager: list of open windows
 import Quickshell.Services.Mpris     // music players
 import Quickshell.Services.UPower    // battery + charging state
+import Quickshell.Services.Notifications   // NotificationServer
 import QtQuick
 import QtQuick.Shapes                // Shape: draws the notch outline
 import QtQuick.Effects               // MultiEffect: rounds the album art corners
@@ -21,7 +26,10 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Top
     margins.top: 0                   // flush with the screen edge (the notch)
     implicitWidth: 1200              // room for the notch to grow into
-    implicitHeight: 44
+    implicitHeight: 440              // room for the notch to stretch down
+    // Keep reserving only the bar's height, not the whole tall window.
+    exclusionMode: ExclusionMode.Normal
+    exclusiveZone: 44
     color: "transparent"
 
     // Only the notch catches clicks; the transparent rest lets clicks through.
@@ -30,11 +38,17 @@ PanelWindow {
     readonly property string font: "JetBrainsMono Nerd Font"
 
     // --- Shape and timing: tweak these -----------------------------------
+    readonly property real glassAlpha: 0.90   // 1.0 = solid, lower = more see-through
     readonly property real flare: 30       // how far the top corners flare outward
     readonly property real corner: 16      // roundness of the bottom corners
     readonly property real pad: 10         // inner padding left/right
     readonly property real gap: 30         // space between sections
     readonly property int animMs: 380      // expand/shrink duration
+    readonly property real notifWidth: 340 // width of the notification area
+    readonly property int popupMs: 6000    // how long a popup stays
+    readonly property int swapMs: 6000     // how long date / time-left stays
+    // True while only the popup card is showing (icons hidden, card fills the notch)
+    readonly property bool popupOnly: popupShown && popup !== null && !listOpen
 
     // --- Data -------------------------------------------------------------
     readonly property var bat: UPower.displayDevice
@@ -49,6 +63,68 @@ PanelWindow {
 
     property bool chargeSpace: false       // step 1: make room for the charging label
     property bool chargeShown: false       // step 2: fade the label in (after the room exists)
+
+    // Tap-to-swap state
+    property bool showDate: false          // clock shows the date instead of the time
+    property bool showRemain: false        // battery shows time left instead of percent
+    readonly property real secsLeft: charging ? bat.timeToFull : bat.timeToEmpty
+
+    function fmtTime(sec) {
+        if (!sec || sec <= 0) return "--"
+        const m = Math.round(sec / 60)
+        const h = Math.floor(m / 60)
+        return h > 0 ? h + "h " + ("0" + (m % 60)).slice(-2) + "m" : m + "m"
+    }
+    function swapped() { swapTimer.restart() }
+
+    Timer {
+        id: swapTimer
+        interval: win.swapMs
+        onTriggered: { win.showDate = false; win.showRemain = false }
+    }
+
+    // Notification state
+    property var popup: null               // newest notification, shown in the popup card
+    property bool popupShown: false
+    property bool listOpen: false          // full list open
+    readonly property bool wantOpen: listOpen || (popupShown && popup !== null)
+    readonly property int notifCount: server.trackedNotifications.values.length
+
+    function toggleList() {
+        listOpen = !listOpen
+        popupShown = false
+        popupTimer.stop()
+    }
+
+    NotificationServer {
+        id: server
+        keepOnReload: true
+        bodySupported: true
+        actionsSupported: true
+        imageSupported: true
+        onNotification: (n) => {
+            n.tracked = true                       // keep it so it appears in the list
+            win.popup = n
+            n.closed.connect(() => {
+                if (win.popup === n) { win.popup = null; win.popupShown = false }
+            })
+            if (!win.listOpen) {
+                win.popupShown = true
+                popupTimer.restart()
+            }
+        }
+    }
+
+    Timer {
+        id: popupTimer
+        interval: win.popupMs
+        onTriggered: win.popupShown = false
+    }
+
+    IpcHandler {
+        target: "island"
+        function notifications(): void { win.toggleList() }
+    }
 
     // Network: ask the kernel for the default route. It prints the interface
     // name (wlan0, enp3s0...) or nothing when offline. Works with any network manager.
@@ -86,15 +162,29 @@ PanelWindow {
         id: island
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
-        height: 40
 
-        // Width = sum of each section's final width. It is animated here, and
-        // the sections animate with the same duration and curve, so they stay
-        // in sync and nothing spills outside.
-        width: 2 * win.flare + 2 * win.pad
+        // Height: popup = just the card; list = bar + list; otherwise the 40px bar.
+        readonly property real panelH: 36 + (win.notifCount > 0 ? Math.min(320, notifList.contentHeight) : 44) + 14
+        height: win.popupOnly ? popupCard.implicitHeight + 24
+                              : 40 + (win.listOpen ? panelH : 0)
+        Behavior on height { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+
+        // Width = sum of each section's final width (or the notification width
+        // when that is wider). It is animated here, and the sections animate with
+        // the same duration and curve, so they stay in sync.
+        readonly property real rowW: 2 * win.flare + 2 * win.pad
              + wifiSec.target + batSec.target + chargeSec.target
-             + clockSec.target + musicSec.target + winSec.target
+             + clockSec.target + musicSec.target + winSec.target + bellSec.target
+        width: Math.max(rowW, win.wantOpen ? 2 * win.flare + 2 * win.pad + win.notifWidth : 0)
         Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+
+        // Hovering a popup pauses its timer.
+        HoverHandler {
+            onHoveredChanged: {
+                if (hovered) popupTimer.stop()
+                else if (win.popupShown) popupTimer.restart()
+            }
+        }
 
         // Plug-in sequence: grow first, THEN fade the text in. On the way out the
         // text fades first, THEN the notch shrinks.
@@ -119,7 +209,7 @@ PanelWindow {
             // 1) glass fill
             ShapePath {
                 strokeWidth: -1                       // fill only
-                fillColor: Qt.alpha(Theme.panel, 0.72)
+                fillColor: Qt.alpha(Theme.panel, win.glassAlpha)
                 startX: 0; startY: 0
 
                 PathLine { x: island.width; y: 0 }                                        // top edge
@@ -207,12 +297,17 @@ PanelWindow {
             height: island.height
             clip: true
 
-            // A left-to-right row of sections. Each section's width includes the
-            // gap in front of it, so a section that disappears takes its gap with it.
+            // A left-to-right row of sections, centered in the notch (so it stays
+            // centered when the notch is wider because of a notification).
+            // Each section's width includes the gap in front of it, so a section
+            // that disappears takes its gap with it.
             Row {
-                x: win.pad
-                height: parent.height
+                x: Math.max(win.pad, (parent.width - width) / 2)
+                height: 40
                 spacing: 0
+                opacity: win.popupOnly ? 0 : 1
+                enabled: !win.popupOnly          // invisible icons shouldn't catch clicks
+                Behavior on opacity { NumberAnimation { duration: 200 } }
 
                 // 1. NETWORK: wifi / ethernet / offline warning
                 Item {
@@ -227,11 +322,13 @@ PanelWindow {
                     }
                 }
 
-                // 2. BATTERY: small iOS-style battery, bolt while charging, then the number
+                // 2. BATTERY: small iOS-style battery, bolt while charging, then the
+                // number. Tap the number to swap it for the time left.
                 Item {
                     id: batSec
                     readonly property real target: win.gap + batRow.implicitWidth
                     width: target; height: 40
+                    Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
                     Row {
                         id: batRow
                         x: win.gap
@@ -271,10 +368,18 @@ PanelWindow {
                             color: Theme.good
                         }
                         Text {
+                            id: batText
                             anchors.verticalCenter: parent.verticalCenter
                             font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
-                            text: win.pct + "%"
+                            text: win.showRemain ? win.fmtTime(win.secsLeft) : win.pct + "%"
                             color: win.batTone
+
+                            MouseArea {
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: { win.showRemain = !win.showRemain; win.swapped() }
+                            }
                         }
                     }
                 }
@@ -299,18 +404,26 @@ PanelWindow {
                     }
                 }
 
-                // 4. CLOCK
+                // 4. CLOCK: tap to swap the time for the date
                 Item {
                     id: clockSec
                     readonly property real target: win.gap + clockText.implicitWidth
                     width: target; height: 40
+                    Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
                     Text {
                         id: clockText
                         x: win.gap
                         anchors.verticalCenter: parent.verticalCenter
                         font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
                         color: Theme.fg
-                        text: Qt.formatDateTime(clock.date, "HH:mm")
+                        text: Qt.formatDateTime(clock.date, win.showDate ? "ddd d MMM" : "HH:mm")
+
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { win.showDate = !win.showDate; win.swapped() }
+                        }
                     }
                 }
 
@@ -458,6 +571,143 @@ PanelWindow {
                                     onClicked: modelData.activate()
                                 }
                             }
+                        }
+                    }
+                }
+
+                // 7. NOTIFICATION BELL: shows while notifications are waiting (or the
+                // list is open). Tap to open / close the list.
+                Item {
+                    id: bellSec
+                    readonly property bool want: win.notifCount > 0 || win.listOpen
+                    readonly property real target: want ? win.gap + bellRow.implicitWidth : 0
+                    width: target; height: 40
+                    clip: true
+                    Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+
+                    Row {
+                        id: bellRow
+                        x: win.gap
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            font.family: win.font; font.pixelSize: 13
+                            text: "\uf0f3"
+                            color: win.listOpen ? Theme.accentHi : Theme.fg
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: win.notifCount > 0
+                            font.family: win.font; font.pixelSize: 12; font.weight: Font.DemiBold
+                            text: win.notifCount
+                            color: win.listOpen ? Theme.accentHi : Theme.fg
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: win.toggleList()
+                    }
+                }
+            }
+
+            // ── Notification area: sits under the bar and is revealed as the notch stretches ──
+            Item {
+                id: notifArea
+                x: win.pad
+                y: win.popupOnly ? 10 : 40
+                Behavior on y { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+                width: parent.width - 2 * win.pad
+                height: Math.max(0, parent.height - y)
+                clip: true
+                opacity: win.wantOpen ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 220 } }
+
+                // Popup: just the newest notification
+                IslandNotif {
+                    id: popupCard
+                    visible: win.popupShown && !win.listOpen && win.popup !== null
+                    anchors.top: parent.top
+                    anchors.topMargin: 2
+                    width: parent.width
+                    notif: win.popup
+                }
+
+                // Full list
+                Item {
+                    anchors.fill: parent
+                    visible: win.listOpen
+
+                    Item {
+                        id: listHead
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 30
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "NOTIFICATIONS"
+                            color: Theme.accentHi
+                            font.family: win.font
+                            font.pixelSize: 9
+                            font.letterSpacing: 4
+                        }
+                        Text {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: win.notifCount > 0
+                            text: "CLEAR ALL"
+                            color: clearArea.containsMouse ? Theme.accentHi : Theme.fg
+                            font.family: win.font
+                            font.pixelSize: 9
+                            font.letterSpacing: 2
+                            MouseArea {
+                                id: clearArea
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    // copy first: dismissing changes the live list
+                                    const all = server.trackedNotifications.values.slice()
+                                    all.forEach(n => n.dismiss())
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        anchors.top: listHead.bottom
+                        anchors.topMargin: 10
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: win.notifCount === 0
+                        text: "NO NOTIFICATIONS"
+                        color: Theme.fgDim
+                        font.family: win.font
+                        font.pixelSize: 10
+                        font.letterSpacing: 3
+                    }
+
+                    ListView {
+                        id: notifList
+                        anchors.top: listHead.bottom
+                        anchors.topMargin: 6
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 6
+                        clip: true
+                        spacing: 8
+                        boundsBehavior: Flickable.StopAtBounds
+                        model: server.trackedNotifications
+                        delegate: IslandNotif {
+                            required property var modelData
+                            width: notifList.width
+                            notif: modelData
                         }
                     }
                 }
