@@ -3,7 +3,7 @@
 # It stays silent otherwise, and re-arms once usage falls back under 80%.
 # The app list is only built at the moment of crossing, never on every check.
 
-LIMIT=85
+LIMIT=75
 REARM=80
 EVERY=10        # seconds between checks (one tiny /proc/meminfo read)
 hot=0
