@@ -8,12 +8,19 @@
 //   qs ipc call island notifications      toggle the list
 // Tap the clock for the date, tap the battery percent for time left.
 // Every color comes from Theme.*, so theme switches fade this too.
+//
+// Alerts (all signal driven, nothing polls from QML):
+//   volume / brightness  -> slim OSD that stretches the notch down briefly
+//   battery 30/20/10 %   -> notification (UPower percentageChanged signal)
+//   RAM over 85 %        -> notification with the top memory users
+//                           (scripts/memwatch.sh prints a line only on crossing)
 
 import Quickshell
-import Quickshell.Io                 // Process, IpcHandler
+import Quickshell.Io                 // Process, IpcHandler, FileView, SplitParser
 import Quickshell.Wayland            // ToplevelManager: list of open windows
 import Quickshell.Services.Mpris     // music players
 import Quickshell.Services.UPower    // battery + charging state
+import Quickshell.Services.Pipewire  // volume signals
 import Quickshell.Services.Notifications   // NotificationServer
 import QtQuick
 import QtQuick.Shapes                // Shape: draws the notch outline
@@ -47,8 +54,10 @@ PanelWindow {
     readonly property real notifWidth: 340 // width of the notification area
     readonly property int popupMs: 6000    // how long a popup stays
     readonly property int swapMs: 6000     // how long date / time-left stays
+    readonly property int osdMs: 1500      // how long the volume/brightness bar stays
+    readonly property real osdWidth: 260   // width of the volume/brightness bar area
     // True while only the popup card is showing (icons hidden, card fills the notch)
-    readonly property bool popupOnly: popupShown && popup !== null && !listOpen
+    readonly property bool popupOnly: popupShown && popup !== null && !listOpen && !osdShown
 
     // --- Data -------------------------------------------------------------
     readonly property var bat: UPower.displayDevice
@@ -126,6 +135,115 @@ PanelWindow {
         function notifications(): void { win.toggleList() }
     }
 
+    // ── OSD: volume + brightness ───────────────────────────────────────────
+    property bool osdShown: false
+    property string osdIcon: ""
+    property real osdValue: 0
+    property bool osdMuted: false
+
+    function showOsd(icon, value, muted) {
+        osdIcon = icon
+        osdValue = value
+        osdMuted = muted
+        osdShown = true
+        osdTimer.restart()
+    }
+
+    Timer { id: osdTimer; interval: win.osdMs; onTriggered: win.osdShown = false }
+
+    // Ignore the values that load when the shell starts or the audio sink changes.
+    Timer { id: osdArm; interval: 2000; running: true }
+
+    // Volume: PipeWire emits signals when it changes, nothing polls.
+    readonly property var sink: Pipewire.defaultAudioSink
+    property real lastVol: -1
+    property bool lastMuted: false
+    onSinkChanged: osdArm.restart()
+
+    PwObjectTracker { objects: [win.sink] }       // makes the sink's audio properties live
+
+    Connections {
+        target: win.sink ? win.sink.audio : null
+        function onVolumeChanged() { win.volEvent() }
+        function onMutedChanged() { win.volEvent() }
+    }
+
+    function volEvent() {
+        const a = sink ? sink.audio : null
+        if (!a) return
+        const changed = a.volume !== lastVol || a.muted !== lastMuted
+        lastVol = a.volume
+        lastMuted = a.muted
+        if (osdArm.running || !changed) return
+        showOsd(a.muted || a.volume === 0 ? "\uf026" : (a.volume > 0.5 ? "\uf028" : "\uf027"),
+                a.volume, a.muted)
+    }
+
+    // Brightness: find the backlight once, then let inotify report changes.
+    // (Fires when something writes the file: brightnessctl, light, compositor binds.)
+    property string blPath: ""
+    property real blMax: 1
+    property real lastBl: -1
+
+    Process {
+        running: true
+        command: ["sh", "-c", "d=$(ls -d /sys/class/backlight/* 2>/dev/null | head -n1); [ -n \"$d\" ] && echo \"$d $(cat $d/max_brightness)\""]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const p = text.trim().split(" ")
+                if (p.length === 2) { win.blMax = parseInt(p[1]); win.blPath = p[0] }
+            }
+        }
+    }
+
+    FileView {
+        path: win.blPath !== "" ? win.blPath + "/brightness" : ""
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            const v = parseInt(text())
+            if (isNaN(v)) return
+            const first = win.lastBl < 0
+            const changed = v !== win.lastBl
+            win.lastBl = v
+            if (first || !changed || osdArm.running) return
+            win.showOsd("\uf185", v / win.blMax, false)
+        }
+    }
+
+    // ── Battery alerts at 30 / 20 / 10 % ───────────────────────────────────
+    // Driven by UPower's percentageChanged signal. Notifies once per level on
+    // the way down, never while charging; charging re-arms the levels.
+    property int lastBatLevel: 0           // 0 = not known yet
+    function batLevel(p) { return p <= 10 ? 10 : (p <= 20 ? 20 : (p <= 30 ? 30 : 100)) }
+
+    function checkBattery() {
+        const p = Math.round(bat.percentage * 100)
+        const lvl = batLevel(p)
+        if (lastBatLevel !== 0 && !charging && lvl < lastBatLevel) {
+            Quickshell.execDetached(["notify-send", "-a", "Battery",
+                "-u", lvl <= 10 ? "critical" : "normal",
+                "-i", lvl <= 10 ? "battery-empty" : "battery-low",
+                "Battery at " + p + "%", "Plug in soon."])
+        }
+        lastBatLevel = lvl
+    }
+
+    // ── RAM alert: memwatch.sh prints one line only when usage crosses 85 % ─
+    Process {
+        running: true
+        command: ["sh", Quickshell.shellPath("scripts/memwatch.sh")]
+        stdout: SplitParser {
+            onRead: line => {
+                const i = line.indexOf("|")
+                if (i < 0) return
+                Quickshell.execDetached(["notify-send", "-a", "Memory", "-u", "critical",
+                    "-i", "dialog-warning", "RAM at " + line.slice(0, i) + "%",
+                    "Biggest users:\n" + line.slice(i + 1)])
+            }
+        }
+    }
+
     // Network: ask the kernel for the default route. It prints the interface
     // name (wlan0, enp3s0...) or nothing when offline. Works with any network manager.
     property string netIface: ""
@@ -144,10 +262,13 @@ PanelWindow {
 
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
-    // When the battery state changes, start (or cancel) the charging sequence.
+    // Battery signals: percentage drives the low-battery alerts; a state change
+    // starts (or cancels) the charging sequence.
     Connections {
         target: win.bat
+        function onPercentageChanged() { win.checkBattery() }
         function onStateChanged() {
+            win.checkBattery()
             if (win.charging) chargeSeq.restart()
             else {
                 chargeSeq.stop()
@@ -163,19 +284,22 @@ PanelWindow {
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
 
-        // Height: popup = just the card; list = bar + list; otherwise the 40px bar.
+        // Height: popup = just the card; list = bar + list; OSD = bar + slim bar;
+        // otherwise the 40px bar.
         readonly property real panelH: 36 + (win.notifCount > 0 ? Math.min(320, notifList.contentHeight) : 44) + 14
         height: win.popupOnly ? popupCard.implicitHeight + 24
-                              : 40 + (win.listOpen ? panelH : 0)
+                              : 40 + (win.listOpen ? panelH : (win.osdShown ? 44 : 0))
         Behavior on height { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
 
-        // Width = sum of each section's final width (or the notification width
-        // when that is wider). It is animated here, and the sections animate with
-        // the same duration and curve, so they stay in sync.
+        // Width = sum of each section's final width (or the notification / OSD
+        // width when that is wider). It is animated here, and the sections animate
+        // with the same duration and curve, so they stay in sync.
         readonly property real rowW: 2 * win.flare + 2 * win.pad
              + wifiSec.target + batSec.target + chargeSec.target
              + clockSec.target + musicSec.target + winSec.target + bellSec.target
-        width: Math.max(rowW, win.wantOpen ? 2 * win.flare + 2 * win.pad + win.notifWidth : 0)
+        width: Math.max(rowW,
+                        win.wantOpen ? 2 * win.flare + 2 * win.pad + win.notifWidth : 0,
+                        win.osdShown ? 2 * win.flare + 2 * win.pad + win.osdWidth : 0)
         Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
 
         // Hovering a popup pauses its timer.
@@ -609,6 +733,52 @@ PanelWindow {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: win.toggleList()
+                    }
+                }
+            }
+
+            // ── OSD bar: volume / brightness, sits under the bar row ──
+            Item {
+                id: osdArea
+                x: win.pad
+                y: 40
+                width: parent.width - 2 * win.pad
+                height: 44
+                opacity: win.osdShown && !win.listOpen && !win.popupOnly ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: 180 } }
+
+                Text {
+                    id: osdIc
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 20
+                    font.family: win.font; font.pixelSize: 15
+                    color: Theme.fg
+                    text: win.osdIcon
+                }
+                Text {
+                    id: osdPct
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 38
+                    horizontalAlignment: Text.AlignRight
+                    font.family: win.font; font.pixelSize: 12; font.weight: Font.DemiBold
+                    color: Theme.fg
+                    text: win.osdMuted ? "mute" : Math.round(win.osdValue * 100) + "%"
+                }
+                Rectangle {
+                    anchors.left: osdIc.right; anchors.leftMargin: 10
+                    anchors.right: osdPct.left; anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 4; radius: 2
+                    color: Qt.rgba(1, 1, 1, 0.16)
+
+                    Rectangle {
+                        height: parent.height; radius: 2
+                        width: parent.width * Math.min(1, Math.max(0, win.osdValue))
+                        color: win.osdMuted ? Theme.fgDim : Theme.accent
+                        Behavior on width { NumberAnimation { duration: 120 } }
                     }
                 }
             }
