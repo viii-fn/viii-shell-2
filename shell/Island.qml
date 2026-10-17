@@ -229,9 +229,11 @@ PanelWindow {
         lastBatLevel = lvl
     }
 
-    // ── RAM alert: memwatch.sh prints one line only when usage crosses 85 % ─
+    // ── RAM alert: memwatch.sh prints one line only when usage crosses 75 % ─
     Process {
-        running: true
+        // Only the Island on the first screen runs the watcher, so with
+        // several monitors you still get exactly one script and one card.
+        running: screen === Quickshell.screens[0]
         command: ["sh", Quickshell.shellPath("scripts/memwatch.sh")]
         stdout: SplitParser {
             onRead: line => {

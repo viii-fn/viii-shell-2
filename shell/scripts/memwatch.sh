@@ -1,10 +1,10 @@
 #!/bin/sh
-# Prints ONE line ("<percent>|<top apps>") each time RAM usage crosses 85%.
-# It stays silent otherwise, and re-arms once usage falls back under 80%.
+# Prints ONE line ("<percent>|<top apps>") each time RAM usage crosses 75%.
+# It stays silent otherwise, and re-arms once usage falls back under 70%.
 # The app list is only built at the moment of crossing, never on every check.
 
 LIMIT=75
-REARM=80
+REARM=70        # must ALWAYS be lower than LIMIT, or the alert logic breaks
 EVERY=10        # seconds between checks (one tiny /proc/meminfo read)
 hot=0
 
