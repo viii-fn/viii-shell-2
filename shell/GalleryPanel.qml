@@ -17,7 +17,7 @@ Scope {
 
     property bool shown: false
     property bool alive: false
-    readonly property int closeMs: 600
+    readonly property int closeMs: 0
     readonly property string mono: "JetBrainsMono Nerd Font"
 
     property string dir: Quickshell.env("HOME") + "/Pictures"
@@ -416,7 +416,7 @@ Scope {
                     source: root.shownPath !== "" ? root.url(root.shownPath) : ""
                     opacity: status === Image.Ready ? 1 : 0
                     scale: status === Image.Ready ? 1 : 1.015
-                    Behavior on opacity { NumberAnimation { duration: 220 } }
+                    Behavior on opacity { NumberAnimation { duration: 0} }
                     Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
 
                     // Aspect of the picture as drawn, used by the crop presets
@@ -564,7 +564,7 @@ Scope {
                         font.family: root.mono
                         font.pixelSize: 22
                         opacity: leftZone.containsMouse ? 1 : (win.showUi ? 0.35 : 0)
-                        Behavior on opacity { NumberAnimation { duration: 180 } }
+                        Behavior on opacity { NumberAnimation { duration: 0} }
                     }
                 }
                 MouseArea {
@@ -588,7 +588,7 @@ Scope {
                         font.family: root.mono
                         font.pixelSize: 22
                         opacity: rightZone.containsMouse ? 1 : (win.showUi ? 0.35 : 0)
-                        Behavior on opacity { NumberAnimation { duration: 180 } }
+                        Behavior on opacity { NumberAnimation { duration: 0} }
                     }
                 }
 
@@ -600,7 +600,7 @@ Scope {
                     anchors.right: parent.right
                     height: 96
                     opacity: win.showUi ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 260 } }
+                    Behavior on opacity { NumberAnimation { duration: 0} }
 
                     Rectangle {
                         anchors.fill: parent
@@ -661,7 +661,7 @@ Scope {
                     anchors.right: parent.right
                     height: 190
                     opacity: win.showUi ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 260 } }
+                    Behavior on opacity { NumberAnimation { duration: 0} }
 
                     Rectangle {
                         anchors.fill: parent
@@ -747,7 +747,7 @@ Scope {
                                 sourceSize.height: 120
                                 source: root.url(th.modelData.path)
                                 opacity: th.sel ? 1 : (tHit.containsMouse ? 0.85 : 0.45)
-                                Behavior on opacity { NumberAnimation { duration: 140 } }
+                                Behavior on opacity { NumberAnimation { duration: 0} }
                             }
                             // Selection underline
                             Rectangle {
@@ -757,7 +757,7 @@ Scope {
                                 height: 2
                                 color: Theme.accentHi
                                 opacity: th.sel ? 1 : 0
-                                Behavior on opacity { NumberAnimation { duration: 140 } }
+                                Behavior on opacity { NumberAnimation { duration: 0} }
                             }
                             MouseArea {
                                 id: tHit

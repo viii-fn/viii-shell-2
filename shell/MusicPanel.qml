@@ -12,7 +12,7 @@ Scope {
 
     property bool shown: false           // what the keybind toggles
     property bool alive: false           // true while MusicCard exists (open + closing)
-    readonly property int closeMs: 600   // leave time for the close animation
+    readonly property int closeMs: 0   // leave time for the close animation
 
     onShownChanged: {
         if (shown) { unload.stop(); alive = true }

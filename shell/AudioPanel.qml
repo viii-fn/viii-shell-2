@@ -12,7 +12,7 @@ Scope {
 
     property bool shown: false
     property bool alive: false           // true while the window exists (open + closing)
-    readonly property int closeMs: 600
+    readonly property int closeMs: 0
 
     onShownChanged: {
         if (shown) { unload.stop(); alive = true }
@@ -69,7 +69,7 @@ Scope {
 
             // 0 = hidden, 1 = open. Starts at 0 and fades in once created.
             property real appear: 0
-            Behavior on appear { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+            Behavior on appear { NumberAnimation { duration: 0; easing.type: Easing.OutCubic } }
             Component.onCompleted: appear = Qt.binding(() => root.shown ? 1 : 0)
 
             onVisibleChanged: if (!visible) root.shown = false

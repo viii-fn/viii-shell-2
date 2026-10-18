@@ -15,7 +15,7 @@ Scope {
 
     property bool shown: false
     property bool alive: false
-    readonly property int closeMs: 600
+    readonly property int closeMs: 0
     readonly property string mono: "JetBrainsMono Nerd Font"
 
     property string place: "Abuja"

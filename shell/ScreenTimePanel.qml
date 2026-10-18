@@ -15,7 +15,7 @@ Scope {
 
     property bool shown: false
     property bool alive: false
-    readonly property int closeMs: 600
+    readonly property int closeMs: 0
     readonly property string mono: "JetBrainsMono Nerd Font"
 
     onShownChanged: {
@@ -793,7 +793,7 @@ Scope {
                                                 font.family: root.mono
                                                 font.pixelSize: 10
                                                 opacity: dayCol.focused ? 1 : 0
-                                                Behavior on opacity { NumberAnimation { duration: 120 } }
+                                                Behavior on opacity { NumberAnimation { duration: 0} }
                                             }
                                             // day name at the bottom
                                             Text {

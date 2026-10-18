@@ -31,6 +31,7 @@ PanelWindow {
 
     anchors.top: true                // top only = centered horizontally
     WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.namespace: "island"
     margins.top: 0                   // flush with the screen edge (the notch)
     implicitWidth: 1200              // room for the notch to grow into
     implicitHeight: 440              // room for the notch to stretch down
@@ -42,18 +43,11 @@ PanelWindow {
     // Only the notch catches clicks; the transparent rest lets clicks through.
     mask: Region { item: island }
 
-    // Blur only the straight-sided body of the notch, not the transparent window
-    BackgroundEffect.blurRegion: Region {
-        x: win.flare
-        y: 0
-        width: island.width - 2 * win.flare
-        height: island.height
-    }
 
     readonly property string font: "JetBrainsMono Nerd Font"
 
     // --- Shape and timing: tweak these -----------------------------------
-    readonly property real glassAlpha: 0.55   // 1.0 = solid, lower = more see-through
+    readonly property real glassAlpha: 1.0   // 1.0 = solid, lower = more see-through
     readonly property real flare: 30       // how far the top corners flare outward
     readonly property real corner: 16      // roundness of the bottom corners
     readonly property real pad: 10         // inner padding left/right

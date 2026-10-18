@@ -13,7 +13,7 @@ Scope {
 
     property bool shown: false
     property bool alive: false
-    readonly property int closeMs: 600
+    readonly property int closeMs: 0
     readonly property string mono: "JetBrainsMono Nerd Font"
 
     onShownChanged: {
@@ -236,7 +236,7 @@ Scope {
         armed = ""
         shown = false
         if (id === "suspend") Quickshell.execDetached(["systemctl", "suspend"])
-        else if (id === "logout") Quickshell.execDetached(["labwc", "--exit"])
+        else if (id === "logout") Quickshell.execDetached(["niri", "msg", "action", "quit", "--skip-confirmation"])
         else if (id === "reboot") Quickshell.execDetached(["systemctl", "reboot"])
         else if (id === "off") Quickshell.execDetached(["systemctl", "poweroff"])
     }
@@ -356,40 +356,28 @@ Scope {
     LazyLoader {
         active: root.alive
 
-        PanelWindow {
+        FloatingWindow {
             id: win
-            anchors { top: true; bottom: true; right: true }
-            margins { top: 12; bottom: 12; right: 12 }
+            title: "Quick Settings"
             implicitWidth: 430
-            exclusionMode: ExclusionMode.Ignore
+            implicitHeight: 700
             color: "transparent"
-            WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.namespace: "quicksettings"
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
-            // Only the card itself takes mouse input; the rest of the strip is click-through
-            mask: Region { item: card }
+            // Closed from outside (e.g. Mod+Q): tell the panel it is no longer shown
+            onVisibleChanged: if (!visible && root.shown) root.shown = false
 
             Shortcut { sequence: "Escape"; onActivated: root.shown = false }
 
             // Glass body
             Rectangle {
                 id: card
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
+                anchors.fill: parent
                 radius: 24
                 clip: true
                 color: Qt.alpha(Theme.panel, 0.82)
                 border.width: 1
                 border.color: Qt.rgba(1, 1, 1, 0.12)
                 opacity: root.enter
-                transform: Translate { x: (1 - root.enter) * 56 }
 
-                // Card height follows its content, and glides when sections expand
-                readonly property real wanted: 44 + headerRow.implicitHeight + 2 + 28 + body.implicitHeight
-                property real h: Math.min(wanted, win.height)
-                Behavior on h { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
-                height: h
 
                 // Specular sheen across the top
                 Rectangle {
@@ -563,7 +551,7 @@ Scope {
                                             border.width: 1
                                             border.color: Theme.accent
                                             opacity: tile.modelData.on ? 1 : 0
-                                            Behavior on opacity { NumberAnimation { duration: 180 } }
+                                            Behavior on opacity { NumberAnimation { duration: 0} }
                                         }
 
                                         ColumnLayout {

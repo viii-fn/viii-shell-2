@@ -13,7 +13,7 @@ Scope {
 
     property bool shown: false
     property bool alive: false
-    readonly property int closeMs: 600
+    readonly property int closeMs: 0
     readonly property string mono: "JetBrainsMono Nerd Font"
 
     property string dir: Quickshell.env("HOME") + "/Notes"
@@ -367,7 +367,7 @@ Scope {
                                 border.width: 1
                                 border.color: Theme.accent
                                 opacity: search.activeFocus ? 1 : 0
-                                Behavior on opacity { NumberAnimation { duration: 120 } }
+                                Behavior on opacity { NumberAnimation { duration: 0} }
                             }
 
                             RowLayout {

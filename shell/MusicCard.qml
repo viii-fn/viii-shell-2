@@ -17,7 +17,7 @@ Scope {
 
     // 0 = hidden, 1 = fully open. Starts at 0 and fades/scales in once created.
     property real appear: 0
-    Behavior on appear { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+    Behavior on appear { NumberAnimation { duration: 0; easing.type: Easing.OutCubic } }
     Component.onCompleted: {
         appear = Qt.binding(() => root.shown ? 1 : 0)
         // Lyrics used to be fetched in the background; now fetch when the card opens.
@@ -139,30 +139,18 @@ Scope {
     }
 
     // --- The window ---------------------------------------------------------
-    PanelWindow {
+    FloatingWindow {
         id: win
+        title: "Music"
         visible: true
-        // Full-screen transparent surface; only the card below catches the mouse
-        anchors.top: true
-        anchors.bottom: true
-        anchors.left: true
-        anchors.right: true
+        implicitWidth: panel.width
+        implicitHeight: panel.height
         color: "transparent"
-        exclusionMode: ExclusionMode.Ignore
-        WlrLayershell.layer: WlrLayer.Top
-        // Only the card's rectangle receives input; everything else passes through
-        // (and nothing is clickable while the card is closing).
-        mask: Region {
-            x: panel.x
-            y: panel.y
-            width: root.shown ? panel.width : 0
-            height: root.shown ? panel.height : 0
-        }
 
         Rectangle {
             id: panel
-            x: 12      // starting position; changes as you drag
-            y: 54
+            x: 0
+            y: 0
             width: 580
             height: Math.max(leftCol.implicitHeight, lyricsBox.implicitHeight) + 40
             radius: 28
@@ -170,7 +158,6 @@ Scope {
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.16)
             opacity: root.appear
-            scale: 0.96 + 0.04 * root.appear
 
             // Specular sheen across the top
             Rectangle {
@@ -183,16 +170,6 @@ Scope {
                 }
             }
 
-            // Drag anywhere on empty card space; stays inside the screen
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.SizeAllCursor
-                drag.target: panel
-                drag.minimumX: 0
-                drag.maximumX: win.width - panel.width
-                drag.minimumY: 0
-                drag.maximumY: win.height - panel.height
-            }
 
             Row {
                 anchors.centerIn: parent

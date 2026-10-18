@@ -18,7 +18,7 @@ FloatingWindow {
 
     // 0 = hidden, 1 = open. Starts at 0 and fades in once created.
     property real appear: 0
-    Behavior on appear { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+    Behavior on appear { NumberAnimation { duration: 0; easing.type: Easing.OutCubic } }
     Component.onCompleted: {
         appear = Qt.binding(() => root.shown ? 1 : 0)
         query.running = true             // read the current scale when the panel opens

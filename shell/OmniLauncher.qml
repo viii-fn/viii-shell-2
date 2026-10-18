@@ -10,7 +10,7 @@ Scope {
 
     property bool shown: false
     property bool alive: false
-    readonly property int closeMs: 600
+    readonly property int closeMs: 0
     property string query: ""
 
     onShownChanged: {
