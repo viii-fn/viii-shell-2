@@ -11,6 +11,8 @@
 //
 // Alerts (all signal driven, nothing polls from QML):
 //   volume / brightness  -> slim OSD that stretches the notch down briefly
+//   wifi / network       -> "Connected <name>" / "Disconnected" stretches the
+//                           notch down briefly (reacts to `ip monitor route`)
 //   battery 30/20/10 %   -> notification (UPower percentageChanged signal)
 //   RAM over 85 %        -> notification with the top memory users
 //                           (scripts/memwatch.sh prints a line only on crossing)
@@ -58,8 +60,10 @@ PanelWindow {
     readonly property int swapMs: 6000     // how long date / time-left stays
     readonly property int osdMs: 1500      // how long the volume/brightness bar stays
     readonly property real osdWidth: 260   // width of the volume/brightness bar area
+    readonly property int netMs: 3500      // how long the wifi card stays
+    readonly property real netWidth: 260   // width of the wifi card area
     // True while only the popup card is showing (icons hidden, card fills the notch)
-    readonly property bool popupOnly: popupShown && popup !== null && !listOpen && !osdShown
+    readonly property bool popupOnly: popupShown && popup !== null && !listOpen && !osdShown && !netShown
 
     // --- Data -------------------------------------------------------------
     readonly property var bat: UPower.displayDevice
@@ -147,6 +151,8 @@ PanelWindow {
         osdIcon = icon
         osdValue = value
         osdMuted = muted
+        netShown = false                 // newest wins: the wifi card steps aside
+        netTimer.stop()
         osdShown = true
         osdTimer.restart()
     }
@@ -250,18 +256,63 @@ PanelWindow {
 
     // Network: ask the kernel for the default route. It prints the interface
     // name (wlan0, enp3s0...) or nothing when offline. Works with any network manager.
+    // The wifi name comes from iwgetid or nmcli if either is installed; without
+    // them the card just shows the interface name instead.
     property string netIface: ""
+    property string netSsid: ""
+    property bool netKnown: false          // false until the first check finished
     readonly property bool online: netIface !== ""
     readonly property bool isWifi: netIface.startsWith("w")
 
+    // Wifi card state: shown briefly when you connect, disconnect or switch network.
+    property bool netShown: false
+
+    function netUpdate(iface, ssid) {
+        const wasOnline = netIface !== ""
+        const nowOnline = iface !== ""
+        const changed = wasOnline !== nowOnline
+            || (nowOnline && (iface !== netIface || (ssid !== "" && ssid !== netSsid)))
+        const first = !netKnown
+        netIface = iface
+        netSsid = ssid
+        netKnown = true
+        if (first || !changed) return          // ignore the value found at startup
+        osdShown = false                       // newest wins: the volume bar steps aside
+        osdTimer.stop()
+        netShown = true
+        netTimer.restart()
+    }
+
+    Timer { id: netTimer; interval: win.netMs; onTriggered: win.netShown = false }
+
     Process {
         id: netProc
-        command: ["sh", "-c", "ip -o route show default | awk '{print $5; exit}'"]
-        stdout: StdioCollector { onStreamFinished: win.netIface = text.trim() }
+        command: ["sh", "-c",
+            "i=$(ip -o route show default | awk '{print $5; exit}'); "
+            + "s=$(iwgetid -r 2>/dev/null || nmcli -t -f active,ssid dev wifi 2>/dev/null | sed -n 's/^yes://p' | head -n1); "
+            + "printf '%s\\n%s\\n' \"$i\" \"$s\""]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const l = text.split("\n")
+                win.netUpdate((l[0] || "").trim(), (l[1] || "").trim())
+            }
+        }
+    }
+    // `ip monitor route` prints a line whenever a network comes or goes, so the
+    // card appears right away instead of waiting for the 10 s check below.
+    Process {
+        running: true
+        command: ["ip", "monitor", "route"]
+        stdout: SplitParser { onRead: netDebounce.restart() }
+    }
+    Timer {      // route changes come in bursts; wait for them to settle
+        id: netDebounce
+        interval: 600
+        onTriggered: if (!netProc.running) netProc.running = true
     }
     Timer {
         interval: 10000; running: true; repeat: true; triggeredOnStart: true
-        onTriggered: netProc.running = true
+        onTriggered: if (!netProc.running) netProc.running = true
     }
 
     SystemClock { id: clock; precision: SystemClock.Minutes }
@@ -288,11 +339,11 @@ PanelWindow {
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
 
-        // Height: popup = just the card; list = bar + list; OSD = bar + slim bar;
+        // Height: popup = just the card; list = bar + list; OSD / wifi = bar + slim bar;
         // otherwise the 40px bar.
         readonly property real panelH: 36 + (win.notifCount > 0 ? Math.min(320, notifList.contentHeight) : 44) + 14
         height: win.popupOnly ? popupCard.implicitHeight + 24
-                              : 40 + (win.listOpen ? panelH : (win.osdShown ? 44 : 0))
+                              : 40 + (win.listOpen ? panelH : ((win.osdShown || win.netShown) ? 44 : 0))
         Behavior on height { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
 
         // Width = sum of each section's final width (or the notification / OSD
@@ -303,7 +354,8 @@ PanelWindow {
              + clockSec.target + musicSec.target + winSec.target + bellSec.target
         width: Math.max(rowW,
                         win.wantOpen ? 2 * win.flare + 2 * win.pad + win.notifWidth : 0,
-                        win.osdShown ? 2 * win.flare + 2 * win.pad + win.osdWidth : 0)
+                        win.osdShown ? 2 * win.flare + 2 * win.pad + win.osdWidth : 0,
+                        win.netShown ? 2 * win.flare + 2 * win.pad + win.netWidth : 0)
         Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
 
         // Hovering a popup pauses its timer.
@@ -783,6 +835,50 @@ PanelWindow {
                         width: parent.width * Math.min(1, Math.max(0, win.osdValue))
                         color: win.osdMuted ? Theme.fgDim : Theme.accent
                         Behavior on width { NumberAnimation { duration: 120 } }
+                    }
+                }
+            }
+
+            // ── Wifi card: "Connected <name>" / "Disconnected", under the bar row ──
+            Item {
+                id: netArea
+                x: win.pad
+                y: 40
+                width: parent.width - 2 * win.pad
+                height: 44
+                opacity: win.netShown && !win.listOpen && !win.popupOnly ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: 180 } }
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 10
+
+                    Rectangle {                                   // round icon badge
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 26; height: 26; radius: 13
+                        color: Qt.alpha(win.online ? Theme.good : Theme.bad, 0.18)
+                        Text {
+                            anchors.centerIn: parent
+                            font.family: win.font; font.pixelSize: 13
+                            text: !win.online ? "\uf071" : (win.isWifi ? "\uf1eb" : "\uf0e8")
+                            color: win.online ? Theme.good : Theme.bad
+                        }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
+                        color: Theme.fg
+                        text: win.online ? "Connected" : "Disconnected"
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: win.online
+                        width: Math.min(implicitWidth, 120)
+                        elide: Text.ElideRight
+                        font.family: win.font; font.pixelSize: 12
+                        color: Theme.fgDim
+                        text: win.netSsid !== "" ? win.netSsid : win.netIface
                     }
                 }
             }
