@@ -1,87 +1,91 @@
 // File: ~/viii-shell-2/shell/Island.qml
-// A glass notch attached to the top edge of the screen: network, battery
-// (with the charging sequence), clock, music (only while a player exists),
-// open-window icons and a notification bell. Top corners flare outward into
-// the screen edge, bottom corners are rounded.
-// It also IS the notification center: new notifications stretch it downward
-// (same shape, just taller), and the bell opens the full list.
-//   qs ipc call island notifications      toggle the list
-// Tap the clock for the date, tap the battery percent for time left.
-// Every color comes from Theme.*, so theme switches fade this too.
+// "Contour + Flags"
+//   - A slim pill (32px). Its OUTLINE is the battery gauge: the accent stroke
+//     runs around the pill and shortens as the charge drops. While charging
+//     it turns green and a small light travels around it.
+//   - Inside: a wifi dot (pulses red when offline), the clock, music (only
+//     while a player exists) and the open-window icons. The active window is
+//     "stamped": tilted, with an accent border.
+//   - Notifications are FLAGS: small tilted tabs hanging off the pill's lower
+//     edge, coloured by app. Tap a flag to unfold that notification. A new
+//     notification unfolds itself briefly, then folds back into a flag.
+//   - Volume / brightness / wifi changes show as one small tilted tab under
+//     the pill (a ruler for volume, a stamp for wifi).
 //
-// Alerts (all signal driven, nothing polls from QML):
-//   volume / brightness  -> slim OSD that stretches the notch down briefly
-//   wifi / network       -> "Connected <name>" / "Disconnected" stretches the
-//                           notch down briefly (reacts to `ip monitor route`)
-//   battery 30/20/10 %   -> notification (UPower percentageChanged signal)
-//   RAM over 85 %        -> notification with the top memory users
-//                           (scripts/memwatch.sh prints a line only on crossing)
+//   qs ipc call island notifications      toggle the full list
+//   Volume / brightness: the pill shrinks into a square, the icon sits in the
+//   middle and the outline thickens to show the level.
+//   The outline thickens and pulses twice whenever the battery % changes.
+//   Plugging in: the pill grows a "Charging" label and a light circles it.
+//   Tap the clock: time -> date -> battery % and time left -> time.
+//
+// All logic (alerts, IPC, network, OSD, memwatch) is unchanged.
 
 import Quickshell
-import Quickshell.Io                 // Process, IpcHandler, FileView, SplitParser
-import Quickshell.Wayland            // ToplevelManager: list of open windows
-import Quickshell.Services.Mpris     // music players
-import Quickshell.Services.UPower    // battery + charging state
-import Quickshell.Services.Pipewire  // volume signals
-import Quickshell.Services.Notifications   // NotificationServer
+import Quickshell.Io
+import Quickshell.Wayland
+import Quickshell.Services.Mpris
+import Quickshell.Services.UPower
+import Quickshell.Services.Pipewire
+import Quickshell.Services.Notifications
 import QtQuick
-import QtQuick.Shapes                // Shape: draws the notch outline
-import QtQuick.Effects               // MultiEffect: rounds the album art corners
+import QtQuick.Shapes
+import QtQuick.Effects
 
 PanelWindow {
     id: win
 
-    anchors.top: true                // top only = centered horizontally
+    anchors.top: true
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "island"
-    margins.top: 0                   // flush with the screen edge (the notch)
-    implicitWidth: 1200              // room for the notch to grow into
-    implicitHeight: 440              // room for the notch to stretch down
-    // Keep reserving only the bar's height, not the whole tall window.
+    margins.top: 6                    // the pill floats slightly off the edge
+    implicitWidth: 1200
+    implicitHeight: 440
     exclusionMode: ExclusionMode.Normal
-    exclusiveZone: 44
+    exclusiveZone: 40
     color: "transparent"
 
-    // Only the notch catches clicks; the transparent rest lets clicks through.
-    mask: Region { item: island }
-
+    // Only the pill, the flags, the tab and the card catch clicks.
+    mask: Region {
+        item: island
+        regions: [
+            Region { item: flagsRow },
+            Region { item: toast },
+            Region { item: panel }
+        ]
+    }
 
     readonly property string font: "JetBrainsMono Nerd Font"
 
-    // --- Shape and timing: tweak these -----------------------------------
-    readonly property real glassAlpha: 1.0   // 1.0 = solid, lower = more see-through
-    readonly property real flare: 30       // how far the top corners flare outward
-    readonly property real corner: 16      // roundness of the bottom corners
-    readonly property real pad: 10         // inner padding left/right
-    readonly property real gap: 30         // space between sections
-    readonly property int animMs: 380      // expand/shrink duration
-    readonly property real notifWidth: 340 // width of the notification area
-    readonly property int popupMs: 6000    // how long a popup stays
-    readonly property int swapMs: 6000     // how long date / time-left stays
-    readonly property int osdMs: 1500      // how long the volume/brightness bar stays
-    readonly property real osdWidth: 260   // width of the volume/brightness bar area
-    readonly property int netMs: 3500      // how long the wifi card stays
-    readonly property real netWidth: 260   // width of the wifi card area
-    // True while only the popup card is showing (icons hidden, card fills the notch)
-    readonly property bool popupOnly: popupShown && popup !== null && !listOpen && !osdShown && !netShown
+    // --- Tweak these ------------------------------------------------------
+    readonly property real pillH: 32
+    readonly property real pad: 14
+    readonly property real gap: 14
+    readonly property int animMs: 380
+    readonly property real notifWidth: 340
+    readonly property int popupMs: 6000
+    readonly property int swapMs: 6000
+    readonly property int osdMs: 1500
+    readonly property int netMs: 3500
+    readonly property int maxFlags: 8
+    readonly property real osdSize: 68          // the square for volume / brightness
+    readonly property bool osdMorph: osdShown && !panelOpen
+    property bool chargeSpace: false            // step 1: make room for the label
+    property bool chargeShown: false            // step 2: fade the label in
+    property bool cometOn: false                // the light circling the pill
 
     // --- Data -------------------------------------------------------------
     readonly property var bat: UPower.displayDevice
     readonly property bool charging: bat.state === UPowerDeviceState.Charging
-    readonly property int pct: Math.round(bat.percentage * 100)   // UPower gives 0..1
+    readonly property int pct: Math.round(bat.percentage * 100)
     readonly property var player: Mpris.players.values.length > 0 ? Mpris.players.values[0] : null
 
-    // Battery color: charging = good, low = bad, getting low = accentHi, else normal text.
     readonly property color batTone: charging ? Theme.good
                                    : (pct <= 15 ? Theme.bad
-                                   : (pct <= 30 ? Theme.accentHi : Theme.fg))
+                                   : (pct <= 30 ? Theme.accentHi : Theme.accent))
 
-    property bool chargeSpace: false       // step 1: make room for the charging label
-    property bool chargeShown: false       // step 2: fade the label in (after the room exists)
-
-    // Tap-to-swap state
-    property bool showDate: false          // clock shows the date instead of the time
-    property bool showRemain: false        // battery shows time left instead of percent
+    // Clock modes: 0 = time, 1 = date, 2 = battery
+    property int clockMode: 0
     readonly property real secsLeft: charging ? bat.timeToFull : bat.timeToEmpty
 
     function fmtTime(sec) {
@@ -90,25 +94,42 @@ PanelWindow {
         const h = Math.floor(m / 60)
         return h > 0 ? h + "h " + ("0" + (m % 60)).slice(-2) + "m" : m + "m"
     }
-    function swapped() { swapTimer.restart() }
 
     Timer {
         id: swapTimer
         interval: win.swapMs
-        onTriggered: { win.showDate = false; win.showRemain = false }
+        onTriggered: win.clockMode = 0
     }
 
-    // Notification state
-    property var popup: null               // newest notification, shown in the popup card
+    // Flag colour: one stable hue per app, red for critical.
+    function flagColor(n) {
+        if (n && n.urgency === NotificationUrgency.Critical) return Theme.bad
+        const s = (n && n.appName) ? n.appName : "?"
+        let h = 0
+        for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360
+        return Qt.hsla(h / 360, 0.55, 0.62, 1)
+    }
+
+    // --- Notification state ---------------------------------------------------
+    property var popup: null               // newest notification
     property bool popupShown: false
-    property bool listOpen: false          // full list open
-    readonly property bool wantOpen: listOpen || (popupShown && popup !== null)
+    property var openNotif: null           // notification unfolded by tapping its flag
+    property bool listOpen: false          // full list (IPC)
+    readonly property var cardNotif: listOpen ? null
+                                   : (openNotif !== null ? openNotif : (popupShown ? popup : null))
+    readonly property bool panelOpen: listOpen || cardNotif !== null
     readonly property int notifCount: server.trackedNotifications.values.length
 
-    function toggleList() {
-        listOpen = !listOpen
+    function closeAll() {
+        listOpen = false
         popupShown = false
+        openNotif = null
         popupTimer.stop()
+    }
+    function toggleList() {
+        const was = listOpen
+        closeAll()
+        listOpen = !was
     }
 
     NotificationServer {
@@ -118,12 +139,14 @@ PanelWindow {
         actionsSupported: true
         imageSupported: true
         onNotification: (n) => {
-            n.tracked = true                       // keep it so it appears in the list
+            n.tracked = true
             win.popup = n
             n.closed.connect(() => {
                 if (win.popup === n) { win.popup = null; win.popupShown = false }
+                if (win.openNotif === n) win.openNotif = null
             })
             if (!win.listOpen) {
+                win.openNotif = null           // newest wins: show the fresh one
                 win.popupShown = true
                 popupTimer.restart()
             }
@@ -139,6 +162,7 @@ PanelWindow {
     IpcHandler {
         target: "island"
         function notifications(): void { win.toggleList() }
+        function pulse(): void { contour.pulseNow() }     // manual test: qs ipc call island pulse
     }
 
     // ── OSD: volume + brightness ───────────────────────────────────────────
@@ -151,24 +175,21 @@ PanelWindow {
         osdIcon = icon
         osdValue = value
         osdMuted = muted
-        netShown = false                 // newest wins: the wifi card steps aside
+        netShown = false
         netTimer.stop()
         osdShown = true
         osdTimer.restart()
     }
 
     Timer { id: osdTimer; interval: win.osdMs; onTriggered: win.osdShown = false }
-
-    // Ignore the values that load when the shell starts or the audio sink changes.
     Timer { id: osdArm; interval: 2000; running: true }
 
-    // Volume: PipeWire emits signals when it changes, nothing polls.
     readonly property var sink: Pipewire.defaultAudioSink
     property real lastVol: -1
     property bool lastMuted: false
     onSinkChanged: osdArm.restart()
 
-    PwObjectTracker { objects: [win.sink] }       // makes the sink's audio properties live
+    PwObjectTracker { objects: [win.sink] }
 
     Connections {
         target: win.sink ? win.sink.audio : null
@@ -187,8 +208,6 @@ PanelWindow {
                 a.volume, a.muted)
     }
 
-    // Brightness: find the backlight once, then let inotify report changes.
-    // (Fires when something writes the file: brightnessctl, light, compositor binds.)
     property string blPath: ""
     property real blMax: 1
     property real lastBl: -1
@@ -220,9 +239,7 @@ PanelWindow {
     }
 
     // ── Battery alerts at 30 / 20 / 10 % ───────────────────────────────────
-    // Driven by UPower's percentageChanged signal. Notifies once per level on
-    // the way down, never while charging; charging re-arms the levels.
-    property int lastBatLevel: 0           // 0 = not known yet
+    property int lastBatLevel: 0
     function batLevel(p) { return p <= 10 ? 10 : (p <= 20 ? 20 : (p <= 30 ? 30 : 100)) }
 
     function checkBattery() {
@@ -237,10 +254,49 @@ PanelWindow {
         lastBatLevel = lvl
     }
 
-    // ── RAM alert: memwatch.sh prints one line only when usage crosses 75 % ─
+    // Pulse the outline whenever the whole-number battery % changes.
+    // Watching the rounded value (pct) means tiny fractional updates from UPower
+    // can't restart the animation over and over.
+    property int lastPct: -1
+    Component.onCompleted: lastPct = pct
+    onPctChanged: {
+        if (lastPct > 0 && pct !== lastPct) contour.pulseNow()
+        lastPct = pct
+        checkBattery()
+    }
+
+    Connections {
+        target: win.bat
+        function onStateChanged() {
+            win.checkBattery()
+            if (win.charging) chargeSeq.restart()
+            else {
+                chargeSeq.stop()
+                win.chargeShown = false
+                win.chargeSpace = false
+                win.cometOn = false
+                contour.pulseNow()          // unplugging pulses too
+            }
+        }
+    }
+
+    // Plug-in sequence: grow first, THEN fade the label in; on the way out the
+    // label fades first, THEN the pill shrinks. The comet only runs ~6 s so it
+    // doesn't keep redrawing forever.
+    SequentialAnimation {
+        id: chargeSeq
+        ScriptAction { script: { win.cometOn = true; cometOff.restart(); contour.pulseNow(); win.chargeSpace = true } }
+        PauseAnimation { duration: win.animMs }
+        ScriptAction { script: win.chargeShown = true }
+        PauseAnimation { duration: 3500 }
+        ScriptAction { script: win.chargeShown = false }
+        PauseAnimation { duration: 250 }
+        ScriptAction { script: win.chargeSpace = false }
+    }
+    Timer { id: cometOff; interval: 6600; onTriggered: win.cometOn = false }
+
+    // ── RAM alert ──────────────────────────────────────────────────────────
     Process {
-        // Only the Island on the first screen runs the watcher, so with
-        // several monitors you still get exactly one script and one card.
         running: screen === Quickshell.screens[0]
         command: ["sh", Quickshell.shellPath("scripts/memwatch.sh")]
         stdout: SplitParser {
@@ -254,17 +310,12 @@ PanelWindow {
         }
     }
 
-    // Network: ask the kernel for the default route. It prints the interface
-    // name (wlan0, enp3s0...) or nothing when offline. Works with any network manager.
-    // The wifi name comes from iwgetid or nmcli if either is installed; without
-    // them the card just shows the interface name instead.
+    // ── Network ────────────────────────────────────────────────────────────
     property string netIface: ""
     property string netSsid: ""
-    property bool netKnown: false          // false until the first check finished
+    property bool netKnown: false
     readonly property bool online: netIface !== ""
     readonly property bool isWifi: netIface.startsWith("w")
-
-    // Wifi card state: shown briefly when you connect, disconnect or switch network.
     property bool netShown: false
 
     function netUpdate(iface, ssid) {
@@ -276,8 +327,8 @@ PanelWindow {
         netIface = iface
         netSsid = ssid
         netKnown = true
-        if (first || !changed) return          // ignore the value found at startup
-        osdShown = false                       // newest wins: the volume bar steps aside
+        if (first || !changed) return
+        osdShown = false
         osdTimer.stop()
         netShown = true
         netTimer.restart()
@@ -298,14 +349,12 @@ PanelWindow {
             }
         }
     }
-    // `ip monitor route` prints a line whenever a network comes or goes, so the
-    // card appears right away instead of waiting for the 10 s check below.
     Process {
         running: true
         command: ["ip", "monitor", "route"]
         stdout: SplitParser { onRead: netDebounce.restart() }
     }
-    Timer {      // route changes come in bursts; wait for them to settle
+    Timer {
         id: netDebounce
         interval: 600
         onTriggered: if (!netProc.running) netProc.running = true
@@ -317,48 +366,510 @@ PanelWindow {
 
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
-    // Battery signals: percentage drives the low-battery alerts; a state change
-    // starts (or cancels) the charging sequence.
-    Connections {
-        target: win.bat
-        function onPercentageChanged() { win.checkBattery() }
-        function onStateChanged() {
-            win.checkBattery()
-            if (win.charging) chargeSeq.restart()
-            else {
-                chargeSeq.stop()
-                win.chargeShown = false
-                win.chargeSpace = false
+    // ══ FLAGS ═════════════════════════════════════════════════════════════
+    // Declared before the pill so the pill draws over their top edge: they
+    // look like they hang out from behind it.
+    Row {
+        id: flagsRow
+        opacity: win.osdMorph ? 0 : 1
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+        anchors.top: island.bottom
+        anchors.topMargin: -6
+        anchors.left: island.left
+        anchors.leftMargin: 22
+        spacing: 4
+
+        Repeater {
+            model: server.trackedNotifications
+            delegate: Item {
+                id: flag
+                required property int index
+                required property var modelData
+                readonly property bool opened: win.cardNotif === modelData
+                visible: index < win.maxFlags
+                width: visible ? 16 : 0
+                height: 16
+
+                Rectangle {
+                    id: tab
+                    width: 14; height: 16; radius: 3
+                    x: 1
+                    y: flag.opened ? 3 : 0
+                    color: win.flagColor(flag.modelData)
+                    border.width: 1
+                    border.color: Qt.rgba(0, 0, 0, 0.25)
+                    rotation: flag.index % 2 === 0 ? -6 : 5
+                    transformOrigin: Item.Top
+                    scale: 0
+                    Component.onCompleted: scale = 1
+                    Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+                    Behavior on y { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        const same = win.openNotif === flag.modelData
+                        win.closeAll()
+                        if (!same) win.openNotif = flag.modelData
+                    }
+                }
+            }
+        }
+        Text {
+            visible: win.notifCount > win.maxFlags
+            anchors.verticalCenter: undefined
+            y: 4
+            font.family: win.font; font.pixelSize: 10
+            color: Theme.fgDim
+            text: "+" + (win.notifCount - win.maxFlags)
+        }
+    }
+
+    // ══ THE PILL ══════════════════════════════════════════════════════════
+    Rectangle {
+        id: island
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        height: win.osdMorph ? win.osdSize : win.pillH
+        radius: Math.min(height / 2, 22)
+        color: Theme.panel
+        clip: true
+        Behavior on height { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+
+        readonly property real rowW: 2 * win.pad
+             + wifiSec.target + chargeSec.target + clockSec.target + musicSec.target + winSec.target
+        width: win.osdMorph ? win.osdSize : rowW
+        Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+
+        // Tapping the empty part of the pill folds any open card.
+        MouseArea {
+            anchors.fill: parent
+            onClicked: if (win.panelOpen) win.closeAll()
+        }
+
+        // ── Contour: the outline is a gauge ──
+        // At rest it shows the battery (2px). During volume / brightness the
+        // island is a square and the outline is 6px and shows that level.
+        // It thickens and pulses twice whenever the battery % changes.
+        // (dashPattern is measured in stroke widths, hence the / sw.)
+        Shape {
+            id: contour
+            anchors.fill: parent
+            layer.enabled: true
+            layer.samples: 4
+
+            property real baseSw: win.osdMorph ? 6 : 2
+            Behavior on baseSw { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+            property real pulse: 0
+            readonly property real sw: baseSw + pulse * 3
+            readonly property real inset: sw / 2
+            readonly property real cr: island.radius
+            readonly property real rc: Math.max(0.5, cr - inset)
+            readonly property real perim: 2 * (island.width - 2 * cr) + 2 * (island.height - 2 * cr) + 2 * Math.PI * rc
+
+            property real gauge: win.osdMorph ? Math.min(1, Math.max(0, win.osdValue))
+                                              : Math.min(1, Math.max(0, win.pct / 100))
+            Behavior on gauge { NumberAnimation { duration: win.osdMorph ? 140 : 600; easing.type: Easing.OutCubic } }
+            property color gaugeColor: win.osdMorph ? (win.osdMuted ? Theme.fgDim : Theme.accent) : win.batTone
+            Behavior on gaugeColor { ColorAnimation { duration: 250 } }
+            property real cometPos: 0
+
+            function pulseNow() { pulseAnim.restart() }
+            SequentialAnimation {
+                id: pulseAnim
+                NumberAnimation { target: contour; property: "pulse"; to: 1;    duration: 180; easing.type: Easing.OutCubic }
+                NumberAnimation { target: contour; property: "pulse"; to: 0.25; duration: 160; easing.type: Easing.InOutQuad }
+                NumberAnimation { target: contour; property: "pulse"; to: 1;    duration: 180; easing.type: Easing.OutCubic }
+                NumberAnimation { target: contour; property: "pulse"; to: 0;    duration: 320; easing.type: Easing.InOutQuad }
+            }
+
+            // track: the full outline, faint
+            ShapePath {
+                fillColor: "transparent"
+                strokeColor: Qt.rgba(1, 1, 1, 0.12)
+                strokeWidth: contour.sw
+                            startX: island.width / 2; startY: contour.inset
+                PathLine { x: island.width - contour.cr; y: contour.inset }
+                PathArc { x: island.width - contour.inset; y: contour.cr
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: island.width - contour.inset; y: island.height - contour.cr }
+                PathArc { x: island.width - contour.cr; y: island.height - contour.inset
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: contour.cr; y: island.height - contour.inset }
+                PathArc { x: contour.inset; y: island.height - contour.cr
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: contour.inset; y: contour.cr }
+                PathArc { x: contour.cr; y: contour.inset
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: island.width / 2; y: contour.inset }
+            }
+
+            // gauge: the same outline, drawn only as far as the level goes
+            ShapePath {
+                fillColor: "transparent"
+                strokeColor: contour.gaugeColor
+                strokeWidth: contour.sw
+                capStyle: win.osdMorph ? ShapePath.FlatCap : ShapePath.RoundCap
+                strokeStyle: ShapePath.DashLine
+                dashPattern: [Math.max(0.01, contour.perim * contour.gauge / contour.sw), contour.perim]
+                            startX: island.width / 2; startY: contour.inset
+                PathLine { x: island.width - contour.cr; y: contour.inset }
+                PathArc { x: island.width - contour.inset; y: contour.cr
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: island.width - contour.inset; y: island.height - contour.cr }
+                PathArc { x: island.width - contour.cr; y: island.height - contour.inset
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: contour.cr; y: island.height - contour.inset }
+                PathArc { x: contour.inset; y: island.height - contour.cr
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: contour.inset; y: contour.cr }
+                PathArc { x: contour.cr; y: contour.inset
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: island.width / 2; y: contour.inset }
+            }
+
+            // comet: a short light that circles the pill after plugging in
+            ShapePath {
+                fillColor: "transparent"
+                strokeColor: (win.cometOn && !win.osdMorph) ? Qt.rgba(1, 1, 1, 0.9) : "transparent"
+                strokeWidth: contour.sw
+                capStyle: ShapePath.RoundCap
+                strokeStyle: ShapePath.DashLine
+                dashPattern: [16 / contour.sw, Math.max(1, contour.perim / contour.sw - 16 / contour.sw)]
+                dashOffset: contour.perim / contour.sw * (1 - contour.cometPos)
+                            startX: island.width / 2; startY: contour.inset
+                PathLine { x: island.width - contour.cr; y: contour.inset }
+                PathArc { x: island.width - contour.inset; y: contour.cr
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: island.width - contour.inset; y: island.height - contour.cr }
+                PathArc { x: island.width - contour.cr; y: island.height - contour.inset
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: contour.cr; y: island.height - contour.inset }
+                PathArc { x: contour.inset; y: island.height - contour.cr
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: contour.inset; y: contour.cr }
+                PathArc { x: contour.cr; y: contour.inset
+                          radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
+                PathLine { x: island.width / 2; y: contour.inset }
+            }
+
+            NumberAnimation on cometPos {
+                from: 0; to: 1
+                duration: 2200
+                loops: Animation.Infinite
+                running: win.cometOn
+            }
+        }
+
+        // The volume / brightness icon, centred in the square
+        Text {
+            anchors.centerIn: parent
+            font.family: win.font; font.pixelSize: 22
+            color: Theme.fg
+            text: win.osdIcon
+            opacity: win.osdMorph ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+        }
+
+        Row {
+            x: win.pad
+            height: island.height
+            spacing: 0
+            opacity: win.osdMorph ? 0 : 1
+            enabled: !win.osdMorph
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+
+            // 1. NETWORK: one dot. Dim = online, pulsing red = offline.
+            Item {
+                id: wifiSec
+                readonly property real target: 8
+                width: target; height: island.height
+                Rectangle {
+                    id: wifiDot
+                    anchors.centerIn: parent
+                    width: 6; height: 6; radius: 3
+                    color: win.online ? Theme.fgDim : Theme.bad
+                    SequentialAnimation on opacity {
+                        running: !win.online
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.25; duration: 700 }
+                        NumberAnimation { to: 1.0; duration: 700 }
+                    }
+                    opacity: 1
+                }
+            }
+
+            // 1b. CHARGING LABEL (only takes space during the plug-in sequence)
+            Item {
+                id: chargeSec
+                readonly property real target: win.chargeSpace ? win.gap + chargeLabel.implicitWidth : 0
+                width: target; height: island.height
+                clip: true
+                Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+
+                Text {
+                    id: chargeLabel
+                    x: win.gap
+                    anchors.verticalCenter: parent.verticalCenter
+                    font.family: win.font; font.pixelSize: 12; font.weight: Font.DemiBold
+                    text: "\uf0e7  Charging"
+                    color: Theme.good
+                    opacity: win.chargeShown ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                }
+            }
+
+            // 2. CLOCK: tap cycles time -> date -> battery
+            Item {
+                id: clockSec
+                readonly property real target: win.gap + clockText.implicitWidth
+                width: target; height: island.height
+                Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+
+                Text {
+                    id: clockText
+                    x: win.gap
+                    anchors.verticalCenter: parent.verticalCenter
+                    font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
+                    font.letterSpacing: 1
+                    color: win.clockMode === 2 ? win.batTone : Theme.fg
+                    text: win.clockMode === 0 ? Qt.formatDateTime(clock.date, "HH:mm")
+                        : (win.clockMode === 1 ? Qt.formatDateTime(clock.date, "ddd d MMM")
+                        : win.pct + "%  " + win.fmtTime(win.secsLeft))
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: { win.clockMode = (win.clockMode + 1) % 3; swapTimer.restart() }
+                    }
+                }
+            }
+
+            // 3. MUSIC: art, title, play / pause
+            Item {
+                id: musicSec
+                property bool want: win.player !== null
+                property bool revealed: false
+                readonly property real target: want ? win.gap + musicRow.implicitWidth : 0
+                width: target; height: island.height
+                clip: true
+                Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+
+                onWantChanged: { if (want) revealTimer.restart(); else revealed = false }
+                Component.onCompleted: if (want) revealTimer.start()
+                Timer { id: revealTimer; interval: win.animMs; onTriggered: musicSec.revealed = true }
+
+                Row {
+                    id: musicRow
+                    x: win.gap
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+                    opacity: musicSec.revealed ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+
+                    Item {
+                        width: 20; height: 20
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: musicSec.want
+
+                        Image {
+                            id: art
+                            anchors.fill: parent
+                            visible: false
+                            fillMode: Image.PreserveAspectCrop
+                            sourceSize: Qt.size(40, 40)
+                            source: win.player ? win.player.trackArtUrl : ""
+                        }
+                        Rectangle {
+                            id: artMask
+                            anchors.fill: parent
+                            radius: 10
+                            visible: false
+                            layer.enabled: true
+                            color: "white"
+                        }
+                        MultiEffect {
+                            anchors.fill: parent
+                            source: art
+                            maskEnabled: true
+                            maskSource: artMask
+                            visible: art.status === Image.Ready
+                        }
+                    }
+
+                    // Title: scrolls back and forth when it is wider than the box,
+                    // and only while a track is playing (idle = no animation running).
+                    Item {
+                        id: titleBox
+                        readonly property real overflow: Math.max(0, titleText.implicitWidth - 150)
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(titleText.implicitWidth, 150)
+                        height: titleText.implicitHeight
+                        clip: true
+
+                        Text {
+                            id: titleText
+                            font.family: win.font; font.pixelSize: 12
+                            color: Theme.fg
+                            text: win.player ? win.player.trackTitle : ""
+                            onTextChanged: x = 0
+                        }
+                        SequentialAnimation {
+                            running: titleBox.overflow > 0 && musicSec.revealed && !win.osdMorph
+                                     && win.player !== null && win.player.isPlaying
+                            loops: Animation.Infinite
+                            onRunningChanged: if (!running) titleText.x = 0
+                            PauseAnimation { duration: 1500 }
+                            NumberAnimation { target: titleText; property: "x"; to: -titleBox.overflow
+                                              duration: Math.max(600, titleBox.overflow * 28) }
+                            PauseAnimation { duration: 1200 }
+                            NumberAnimation { target: titleText; property: "x"; to: 0
+                                              duration: Math.max(600, titleBox.overflow * 28) }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 20; height: 20; radius: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: Theme.accent
+                        opacity: playArea.containsMouse ? 0.85 : 1
+                        scale: playArea.pressed ? 0.9 : 1
+                        Behavior on scale { NumberAnimation { duration: 70 } }
+                        Text {
+                            anchors.centerIn: parent
+                            font.family: win.font; font.pixelSize: 9
+                            color: Theme.accentText
+                            text: (win.player && win.player.isPlaying) ? "\uf04c" : "\uf04b"
+                        }
+                        MouseArea {
+                            id: playArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: if (win.player) win.player.togglePlaying()
+                        }
+                    }
+                }
+            }
+
+            // 4. OPEN WINDOWS: the active one is stamped (tilted, inked border)
+            Item {
+                id: winSec
+                readonly property int count: ToplevelManager.toplevels.values.length
+                readonly property real target: count > 0 ? win.gap + iconsRow.implicitWidth : 0
+                width: target; height: island.height
+                clip: true
+                Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+
+                Row {
+                    id: iconsRow
+                    x: win.gap
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+
+                    Repeater {
+                        model: ToplevelManager.toplevels
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: 22; height: 22; radius: 5
+                            color: modelData.activated ? Qt.alpha(Theme.accent, 0.14) : "transparent"
+                            border.width: modelData.activated ? 1 : 0
+                            border.color: Theme.accent
+                            rotation: modelData.activated ? -4 : 0
+                            Behavior on rotation { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
+
+                            Image {
+                                anchors.centerIn: parent
+                                width: 14; height: 14
+                                sourceSize: Qt.size(28, 28)
+                                opacity: modelData.activated ? 1 : 0.5
+                                source: Quickshell.iconPath(modelData.appId, "application-x-executable")
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: modelData.activate()
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    // --- The notch ----------------------------------------------------------
-    Item {
-        id: island
-        anchors.top: parent.top
-        anchors.horizontalCenter: parent.horizontalCenter
-
-        // Height: popup = just the card; list = bar + list; OSD / wifi = bar + slim bar;
-        // otherwise the 40px bar.
-        readonly property real panelH: 36 + (win.notifCount > 0 ? Math.min(320, notifList.contentHeight) : 44) + 14
-        height: win.popupOnly ? popupCard.implicitHeight + 24
-                              : 40 + (win.listOpen ? panelH : ((win.osdShown || win.netShown) ? 44 : 0))
+    // ══ TOAST TAB: wifi stamp, tilted under the pill ═══════
+    Rectangle {
+        id: toast
+        readonly property bool want: win.netShown && !win.panelOpen && !win.osdMorph
+        anchors.top: island.bottom
+        anchors.topMargin: 12
+        anchors.horizontalCenter: island.horizontalCenter
+        rotation: -2
+        radius: 14
+        color: Theme.panel
+        border.width: 1
+        border.color: Qt.rgba(1, 1, 1, 0.12)
+        clip: true
+        width: netRow.implicitWidth + 28
+        height: want ? 28 : 0
+        opacity: want ? 1 : 0
+        visible: height > 0.5
+        Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
         Behavior on height { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 180 } }
 
-        // Width = sum of each section's final width (or the notification / OSD
-        // width when that is wider). It is animated here, and the sections animate
-        // with the same duration and curve, so they stay in sync.
-        readonly property real rowW: 2 * win.flare + 2 * win.pad
-             + wifiSec.target + batSec.target + chargeSec.target
-             + clockSec.target + musicSec.target + winSec.target + bellSec.target
-        width: Math.max(rowW,
-                        win.wantOpen ? 2 * win.flare + 2 * win.pad + win.notifWidth : 0,
-                        win.osdShown ? 2 * win.flare + 2 * win.pad + win.osdWidth : 0,
-                        win.netShown ? 2 * win.flare + 2 * win.pad + win.netWidth : 0)
-        Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+        // wifi: stamped icon + "Connected name" / "Disconnected"
+        Row {
+            id: netRow
+            anchors.centerIn: parent
+            spacing: 8
 
-        // Hovering a popup pauses its timer.
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                font.family: win.font; font.pixelSize: 13
+                text: !win.online ? "\uf071" : (win.isWifi ? "\uf1eb" : "\uf0e8")
+                color: win.online ? Theme.good : Theme.bad
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                font.family: win.font; font.pixelSize: 12; font.weight: Font.DemiBold
+                color: Theme.fg
+                text: win.online ? "Connected" : "Disconnected"
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: win.online
+                width: Math.min(implicitWidth, 110)
+                elide: Text.ElideRight
+                font.family: win.font; font.pixelSize: 11
+                color: Theme.fgDim
+                text: win.netSsid !== "" ? win.netSsid : win.netIface
+            }
+        }
+    }
+
+    // ══ CARD PANEL: one unfolded notification, or the full list ═══════════
+    Rectangle {
+        id: panel
+        anchors.top: island.bottom
+        anchors.topMargin: 16
+        anchors.horizontalCenter: island.horizontalCenter
+        width: win.notifWidth + 24
+        radius: 20
+        color: Theme.panel
+        border.width: 1
+        border.color: Qt.rgba(1, 1, 1, 0.12)
+        clip: true
+
+        readonly property real cardH: popupCard.implicitHeight + 20
+        readonly property real listH: 44 + (win.notifCount > 0 ? Math.min(300, notifList.contentHeight) : 28) + 12
+        height: win.panelOpen ? (win.listOpen ? listH : cardH) : 0
+        opacity: win.panelOpen ? 1 : 0
+        visible: height > 0.5
+        Behavior on height { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+
+        // Hovering a card pauses its auto-fold.
         HoverHandler {
             onHoveredChanged: {
                 if (hovered) popupTimer.stop()
@@ -366,620 +877,84 @@ PanelWindow {
             }
         }
 
-        // Plug-in sequence: grow first, THEN fade the text in. On the way out the
-        // text fades first, THEN the notch shrinks.
-        SequentialAnimation {
-            id: chargeSeq
-            ScriptAction { script: win.chargeSpace = true }
-            PauseAnimation { duration: win.animMs }          // wait for the growth to finish
-            ScriptAction { script: win.chargeShown = true }
-            PauseAnimation { duration: 3500 }                // how long it stays expanded
-            ScriptAction { script: win.chargeShown = false }
-            PauseAnimation { duration: 250 }                 // wait for the fade-out
-            ScriptAction { script: win.chargeSpace = false }
+        IslandNotif {
+            id: popupCard
+            visible: !win.listOpen && win.cardNotif !== null
+            x: 12; y: 10
+            width: parent.width - 24
+            notif: win.cardNotif
         }
 
-        // Glass body drawn as one Shape with three layers:
-        // 1) translucent fill, 2) specular sheen, 3) thin border (sides only,
-        // so no line runs along the screen edge).
-        Shape {
-            anchors.fill: parent
-            preferredRendererType: Shape.CurveRenderer      // smooth edges
-
-            // 1) glass fill
-            ShapePath {
-                strokeWidth: -1                       // fill only
-                fillColor: Qt.alpha(Theme.panel, win.glassAlpha)
-                startX: 0; startY: 0
-
-                PathLine { x: island.width; y: 0 }                                        // top edge
-                PathQuad { x: island.width - win.flare; y: win.flare
-                           controlX: island.width - win.flare; controlY: 0 }               // right flare
-                PathLine { x: island.width - win.flare; y: island.height - win.corner }   // right side
-                PathArc {
-                    x: island.width - win.flare - win.corner; y: island.height
-                    radiusX: win.corner; radiusY: win.corner
-                    direction: PathArc.Clockwise
-                }
-                PathLine { x: win.flare + win.corner; y: island.height }                  // bottom edge
-                PathArc {
-                    x: win.flare; y: island.height - win.corner
-                    radiusX: win.corner; radiusY: win.corner
-                    direction: PathArc.Clockwise
-                }
-                PathLine { x: win.flare; y: win.flare }                                   // left side
-                PathQuad { x: 0; y: 0; controlX: win.flare; controlY: 0 }                 // left flare
-            }
-
-            // 2) sheen: a soft highlight fading down from the top edge
-            ShapePath {
-                strokeWidth: -1                       // fill only
-                fillGradient: LinearGradient {
-                    x1: 0; y1: 0; x2: 0; y2: island.height
-                    GradientStop { position: 0.0;  color: Qt.rgba(1, 1, 1, 0.14) }
-                    GradientStop { position: 0.85; color: Qt.rgba(1, 1, 1, 0.0) }
-                }
-                startX: 0; startY: 0
-
-                PathLine { x: island.width; y: 0 }                                        // top edge
-                PathQuad { x: island.width - win.flare; y: win.flare
-                           controlX: island.width - win.flare; controlY: 0 }               // right flare
-                PathLine { x: island.width - win.flare; y: island.height - win.corner }   // right side
-                PathArc {
-                    x: island.width - win.flare - win.corner; y: island.height
-                    radiusX: win.corner; radiusY: win.corner
-                    direction: PathArc.Clockwise
-                }
-                PathLine { x: win.flare + win.corner; y: island.height }                  // bottom edge
-                PathArc {
-                    x: win.flare; y: island.height - win.corner
-                    radiusX: win.corner; radiusY: win.corner
-                    direction: PathArc.Clockwise
-                }
-                PathLine { x: win.flare; y: win.flare }                                   // left side
-                PathQuad { x: 0; y: 0; controlX: win.flare; controlY: 0 }                 // left flare
-            }
-
-            // 3) border: same outline but open at the top (starts at the right
-            // top corner and ends at the left one)
-            ShapePath {
-                fillColor: "transparent"
-                strokeColor: Qt.rgba(1, 1, 1, 0.16)
-                strokeWidth: 1
-                startX: island.width; startY: 0
-
-                PathQuad {
-                    x: island.width - win.flare; y: win.flare
-                    controlX: island.width - win.flare; controlY: 0
-                }
-                PathLine { x: island.width - win.flare; y: island.height - win.corner }
-                PathArc {
-                    x: island.width - win.flare - win.corner; y: island.height
-                    radiusX: win.corner; radiusY: win.corner
-                    direction: PathArc.Clockwise
-                }
-                PathLine { x: win.flare + win.corner; y: island.height }
-                PathArc {
-                    x: win.flare; y: island.height - win.corner
-                    radiusX: win.corner; radiusY: win.corner
-                    direction: PathArc.Clockwise
-                }
-                PathLine { x: win.flare; y: win.flare }
-                PathQuad { x: 0; y: 0; controlX: win.flare; controlY: 0 }
-            }
-        }
-
-        // Everything inside is clipped to the straight-sided body (the flares
-        // are decoration only), so nothing draws outside the notch.
         Item {
-            x: win.flare
-            width: island.width - 2 * win.flare
-            height: island.height
-            clip: true
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            visible: win.listOpen
 
-            // A left-to-right row of sections, centered in the notch (so it stays
-            // centered when the notch is wider because of a notification).
-            // Each section's width includes the gap in front of it, so a section
-            // that disappears takes its gap with it.
-            Row {
-                x: Math.max(win.pad, (parent.width - width) / 2)
-                height: 40
-                spacing: 0
-                opacity: win.popupOnly ? 0 : 1
-                enabled: !win.popupOnly          // invisible icons shouldn't catch clicks
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-
-                // 1. NETWORK: wifi / ethernet / offline warning
-                Item {
-                    id: wifiSec
-                    readonly property real target: 18
-                    width: target; height: 40
-                    Text {
-                        anchors.centerIn: parent
-                        font.family: win.font; font.pixelSize: 14
-                        text: !win.online ? "\uf071" : (win.isWifi ? "\uf1eb" : "\uf0e8")
-                        color: win.online ? Theme.fg : Theme.bad
-                    }
-                }
-
-                // 2. BATTERY: small iOS-style battery, bolt while charging, then the
-                // number. Tap the number to swap it for the time left.
-                Item {
-                    id: batSec
-                    readonly property real target: win.gap + batRow.implicitWidth
-                    width: target; height: 40
-                    Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
-                    Row {
-                        id: batRow
-                        x: win.gap
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 7
-
-                        Item {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 26; height: 12
-
-                            Rectangle {                                   // outline
-                                width: 23; height: 12; radius: 4
-                                color: "transparent"
-                                border.width: 1
-                                border.color: Qt.alpha(win.batTone, 0.6)
-
-                                Rectangle {                               // level
-                                    x: 2; y: 2
-                                    height: parent.height - 4
-                                    width: Math.max(0, (parent.width - 4) * Math.min(1, win.pct / 100))
-                                    radius: 2
-                                    color: win.batTone
-                                    Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                                }
-                            }
-                            Rectangle {                                   // little nub on the right
-                                x: 24; anchors.verticalCenter: parent.verticalCenter
-                                width: 2; height: 5; radius: 1
-                                color: Qt.alpha(win.batTone, 0.6)
-                            }
-                        }
-                        Text {
-                            visible: win.charging
-                            anchors.verticalCenter: parent.verticalCenter
-                            font.family: win.font; font.pixelSize: 13
-                            text: "\uf0e7"
-                            color: Theme.good
-                        }
-                        Text {
-                            id: batText
-                            anchors.verticalCenter: parent.verticalCenter
-                            font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
-                            text: win.showRemain ? win.fmtTime(win.secsLeft) : win.pct + "%"
-                            color: win.batTone
-
-                            MouseArea {
-                                anchors.fill: parent
-                                anchors.margins: -4
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: { win.showRemain = !win.showRemain; win.swapped() }
-                            }
-                        }
-                    }
-                }
-
-                // 3. CHARGING LABEL (only takes space during the plug-in sequence)
-                Item {
-                    id: chargeSec
-                    readonly property real target: win.chargeSpace ? win.gap + chargeLabel.implicitWidth : 0
-                    width: target; height: 40
-                    clip: true
-                    Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
-
-                    Text {
-                        id: chargeLabel
-                        x: win.gap
-                        anchors.verticalCenter: parent.verticalCenter
-                        font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
-                        text: "Charging"
-                        color: Theme.good
-                        opacity: win.chargeShown ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 200 } }
-                    }
-                }
-
-                // 4. CLOCK: tap to swap the time for the date
-                Item {
-                    id: clockSec
-                    readonly property real target: win.gap + clockText.implicitWidth
-                    width: target; height: 40
-                    Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
-                    Text {
-                        id: clockText
-                        x: win.gap
-                        anchors.verticalCenter: parent.verticalCenter
-                        font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
-                        color: Theme.fg
-                        text: Qt.formatDateTime(clock.date, win.showDate ? "ddd d MMM" : "HH:mm")
-
-                        MouseArea {
-                            anchors.fill: parent
-                            anchors.margins: -4
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: { win.showDate = !win.showDate; win.swapped() }
-                        }
-                    }
-                }
-
-                // 5. MUSIC: rounded album art, title, prev / play / next
-                Item {
-                    id: musicSec
-                    property bool want: win.player !== null
-                    property bool revealed: false        // true once the notch has finished growing
-                    readonly property real target: want ? win.gap + musicRow.implicitWidth : 0
-                    width: target; height: 40
-                    clip: true
-                    Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
-
-                    // Fade the content in only after the growth animation is done.
-                    onWantChanged: { if (want) revealTimer.restart(); else revealed = false }
-                    Component.onCompleted: if (want) revealTimer.start()
-                    Timer { id: revealTimer; interval: win.animMs; onTriggered: musicSec.revealed = true }
-
-                    Row {
-                        id: musicRow
-                        x: win.gap
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 10
-                        opacity: musicSec.revealed ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 200 } }
-
-                        // Album art with rounded corners (the mask is a white rounded square).
-                        Item {
-                            width: 24; height: 24
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: musicSec.want       // no offscreen buffers while nothing plays
-
-                            Image {
-                                id: art
-                                anchors.fill: parent
-                                visible: false           // shown through the MultiEffect below
-                                fillMode: Image.PreserveAspectCrop
-                                sourceSize: Qt.size(48, 48)
-                                source: win.player ? win.player.trackArtUrl : ""
-                            }
-                            Rectangle {
-                                id: artMask
-                                anchors.fill: parent
-                                radius: 7
-                                visible: false
-                                layer.enabled: true      // the mask has to be a texture
-                                color: "white"
-                            }
-                            MultiEffect {
-                                anchors.fill: parent
-                                source: art
-                                maskEnabled: true
-                                maskSource: artMask
-                                visible: art.status === Image.Ready
-                            }
-                        }
-
-                        // Song title, cut off with "…" if long.
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: Math.min(implicitWidth, 140)
-                            elide: Text.ElideRight
-                            font.family: win.font; font.pixelSize: 13
-                            color: Theme.fg
-                            text: win.player ? win.player.trackTitle : ""
-                        }
-
-                        // Prev / play-pause (round accent button) / next.
-                        Row {
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 2
-
-                            Repeater {
-                                model: ["prev", "play", "next"]
-                                delegate: Item {
-                                    id: ctl
-                                    required property string modelData
-                                    readonly property bool isPlay: modelData === "play"
-                                    width: 24; height: 24
-
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        radius: width / 2
-                                        color: ctl.isPlay ? Theme.accent
-                                                          : Qt.rgba(1, 1, 1, ctlArea.containsMouse ? 0.16 : 0)
-                                        opacity: ctl.isPlay && ctlArea.containsMouse ? 0.85 : 1
-                                    }
-                                    Text {
-                                        anchors.centerIn: parent
-                                        font.family: win.font; font.pixelSize: 10
-                                        color: ctl.isPlay ? Theme.accentText : Theme.fg
-                                        text: ctl.modelData === "prev" ? "\uf048"
-                                            : (ctl.isPlay ? ((win.player && win.player.isPlaying) ? "\uf04c" : "\uf04b")
-                                                          : "\uf051")
-                                    }
-                                    MouseArea {
-                                        id: ctlArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        onClicked: {
-                                            if (!win.player) return
-                                            if (ctl.modelData === "prev") win.player.previous()
-                                            else if (ctl.isPlay) win.player.togglePlaying()
-                                            else win.player.next()
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 6. OPEN WINDOWS: one icon per window, the active one gets a glass capsule
-                Item {
-                    id: winSec
-                    readonly property int count: ToplevelManager.toplevels.values.length
-                    readonly property real target: count > 0 ? win.gap + iconsRow.implicitWidth : 0
-                    width: target; height: 40
-                    clip: true
-                    Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
-
-                    Row {
-                        id: iconsRow
-                        x: win.gap
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 4
-
-                        // Repeater makes one copy of the delegate per window.
-                        Repeater {
-                            model: ToplevelManager.toplevels
-                            delegate: Rectangle {
-                                required property var modelData      // the window this copy represents
-                                width: 28; height: 28; radius: 10
-                                color: modelData.activated ? Qt.rgba(1, 1, 1, 0.16) : "transparent"
-
-                                Image {
-                                    anchors.centerIn: parent
-                                    width: 18; height: 18
-                                    sourceSize: Qt.size(36, 36)
-                                    opacity: modelData.activated ? 1 : 0.5
-                                    source: Quickshell.iconPath(modelData.appId, "application-x-executable")
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: modelData.activate()
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 7. NOTIFICATION BELL: shows while notifications are waiting (or the
-                // list is open). Tap to open / close the list.
-                Item {
-                    id: bellSec
-                    readonly property bool want: win.notifCount > 0 || win.listOpen
-                    readonly property real target: want ? win.gap + bellRow.implicitWidth : 0
-                    width: target; height: 40
-                    clip: true
-                    Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
-
-                    Row {
-                        id: bellRow
-                        x: win.gap
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 6
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            font.family: win.font; font.pixelSize: 13
-                            text: "\uf0f3"
-                            color: win.listOpen ? Theme.accentHi : Theme.fg
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: win.notifCount > 0
-                            font.family: win.font; font.pixelSize: 12; font.weight: Font.DemiBold
-                            text: win.notifCount
-                            color: win.listOpen ? Theme.accentHi : Theme.fg
-                        }
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: win.toggleList()
-                    }
-                }
-            }
-
-            // ── OSD bar: volume / brightness, sits under the bar row ──
             Item {
-                id: osdArea
-                x: win.pad
-                y: 40
-                width: parent.width - 2 * win.pad
-                height: 44
-                opacity: win.osdShown && !win.listOpen && !win.popupOnly ? 1 : 0
-                visible: opacity > 0
-                Behavior on opacity { NumberAnimation { duration: 180 } }
+                id: listHead
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 34
 
                 Text {
-                    id: osdIc
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 20
-                    font.family: win.font; font.pixelSize: 15
-                    color: Theme.fg
-                    text: win.osdIcon
+                    text: "Notifications"
+                    color: Theme.accentHi
+                    font.family: win.font
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
                 }
                 Text {
-                    id: osdPct
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 38
-                    horizontalAlignment: Text.AlignRight
-                    font.family: win.font; font.pixelSize: 12; font.weight: Font.DemiBold
-                    color: Theme.fg
-                    text: win.osdMuted ? "mute" : Math.round(win.osdValue * 100) + "%"
-                }
-                Rectangle {
-                    anchors.left: osdIc.right; anchors.leftMargin: 10
-                    anchors.right: osdPct.left; anchors.rightMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: 4; radius: 2
-                    color: Qt.rgba(1, 1, 1, 0.16)
-
-                    Rectangle {
-                        height: parent.height; radius: 2
-                        width: parent.width * Math.min(1, Math.max(0, win.osdValue))
-                        color: win.osdMuted ? Theme.fgDim : Theme.accent
-                        Behavior on width { NumberAnimation { duration: 120 } }
-                    }
-                }
-            }
-
-            // ── Wifi card: "Connected <name>" / "Disconnected", under the bar row ──
-            Item {
-                id: netArea
-                x: win.pad
-                y: 40
-                width: parent.width - 2 * win.pad
-                height: 44
-                opacity: win.netShown && !win.listOpen && !win.popupOnly ? 1 : 0
-                visible: opacity > 0
-                Behavior on opacity { NumberAnimation { duration: 180 } }
-
-                Row {
-                    anchors.centerIn: parent
-                    spacing: 10
-
-                    Rectangle {                                   // round icon badge
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 26; height: 26; radius: 13
-                        color: Qt.alpha(win.online ? Theme.good : Theme.bad, 0.18)
-                        Text {
-                            anchors.centerIn: parent
-                            font.family: win.font; font.pixelSize: 13
-                            text: !win.online ? "\uf071" : (win.isWifi ? "\uf1eb" : "\uf0e8")
-                            color: win.online ? Theme.good : Theme.bad
+                    visible: win.notifCount > 0
+                    text: "Clear all"
+                    color: clearArea.containsMouse ? Theme.accentHi : Theme.fgDim
+                    font.family: win.font
+                    font.pixelSize: 11
+                    MouseArea {
+                        id: clearArea
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            const all = server.trackedNotifications.values.slice()
+                            all.forEach(n => n.dismiss())
                         }
                     }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
-                        color: Theme.fg
-                        text: win.online ? "Connected" : "Disconnected"
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: win.online
-                        width: Math.min(implicitWidth, 120)
-                        elide: Text.ElideRight
-                        font.family: win.font; font.pixelSize: 12
-                        color: Theme.fgDim
-                        text: win.netSsid !== "" ? win.netSsid : win.netIface
-                    }
                 }
             }
 
-            // ── Notification area: sits under the bar and is revealed as the notch stretches ──
-            Item {
-                id: notifArea
-                x: win.pad
-                y: win.popupOnly ? 10 : 40
-                Behavior on y { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
-                width: parent.width - 2 * win.pad
-                height: Math.max(0, parent.height - y)
+            Text {
+                anchors.top: listHead.bottom
+                anchors.topMargin: 4
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: win.notifCount === 0
+                text: "You're all caught up"
+                color: Theme.fgDim
+                font.family: win.font
+                font.pixelSize: 11
+            }
+
+            ListView {
+                id: notifList
+                anchors.top: listHead.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 8
                 clip: true
-                opacity: win.wantOpen ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 220 } }
-
-                // Popup: just the newest notification
-                IslandNotif {
-                    id: popupCard
-                    visible: win.popupShown && !win.listOpen && win.popup !== null
-                    anchors.top: parent.top
-                    anchors.topMargin: 2
-                    width: parent.width
-                    notif: win.popup
-                }
-
-                // Full list
-                Item {
-                    anchors.fill: parent
-                    visible: win.listOpen
-
-                    Item {
-                        id: listHead
-                        anchors.top: parent.top
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        height: 30
-
-                        Text {
-                            anchors.left: parent.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "NOTIFICATIONS"
-                            color: Theme.accentHi
-                            font.family: win.font
-                            font.pixelSize: 9
-                            font.letterSpacing: 4
-                        }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: win.notifCount > 0
-                            text: "CLEAR ALL"
-                            color: clearArea.containsMouse ? Theme.accentHi : Theme.fg
-                            font.family: win.font
-                            font.pixelSize: 9
-                            font.letterSpacing: 2
-                            MouseArea {
-                                id: clearArea
-                                anchors.fill: parent
-                                anchors.margins: -4
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    // copy first: dismissing changes the live list
-                                    const all = server.trackedNotifications.values.slice()
-                                    all.forEach(n => n.dismiss())
-                                }
-                            }
-                        }
-                    }
-
-                    Text {
-                        anchors.top: listHead.bottom
-                        anchors.topMargin: 10
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        visible: win.notifCount === 0
-                        text: "NO NOTIFICATIONS"
-                        color: Theme.fgDim
-                        font.family: win.font
-                        font.pixelSize: 10
-                        font.letterSpacing: 3
-                    }
-
-                    ListView {
-                        id: notifList
-                        anchors.top: listHead.bottom
-                        anchors.topMargin: 6
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 6
-                        clip: true
-                        spacing: 8
-                        boundsBehavior: Flickable.StopAtBounds
-                        model: server.trackedNotifications
-                        delegate: IslandNotif {
-                            required property var modelData
-                            width: notifList.width
-                            notif: modelData
-                        }
-                    }
+                spacing: 8
+                boundsBehavior: Flickable.StopAtBounds
+                model: server.trackedNotifications
+                delegate: IslandNotif {
+                    required property var modelData
+                    width: notifList.width
+                    notif: modelData
                 }
             }
         }
