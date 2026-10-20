@@ -1,16 +1,17 @@
 // File: ~/viii-shell-2/shell/Island.qml
-// "Contour + Flags"
+// "Contour + Bell"
 //   - A slim pill (32px). Its OUTLINE is the battery gauge: the accent stroke
 //     runs around the pill and shortens as the charge drops. While charging
 //     it turns green and a small light travels around it.
-//   - Inside: a wifi dot (pulses red when offline), the clock, music (only
-//     while a player exists) and the open-window icons. The active window is
-//     "stamped": tilted, with an accent border.
-//   - Notifications are FLAGS: small tilted tabs hanging off the pill's lower
-//     edge, coloured by app. Tap a flag to unfold that notification. A new
-//     notification unfolds itself briefly, then folds back into a flag.
-//   - Volume / brightness / wifi changes show as one small tilted tab under
-//     the pill (a ruler for volume, a stamp for wifi).
+//   - Inside: a wifi dot (pulses red when offline), the clock, a bell with the
+//     notification count, music (only while a player exists) and the
+//     open-window icons. The active window is "stamped": tilted, with an
+//     accent border.
+//   - Notifications: the pill itself MORPHS into the notification. It grows to
+//     the exact width and height of the content (just like volume / brightness
+//     grow into a square). A new notification unfolds itself briefly, then the
+//     pill shrinks back. Tap the bell to open the full list the same way.
+//   - Wifi changes show as one small tilted tab under the pill.
 //
 //   qs ipc call island notifications      toggle the full list
 //   Volume / brightness: the pill shrinks into a square, the icon sits in the
@@ -18,6 +19,8 @@
 //   The outline thickens and pulses twice whenever the battery % changes.
 //   Plugging in: the pill grows a "Charging" label and a light circles it.
 //   Tap the clock: time -> date -> battery % and time left -> time.
+//   Tap the bell: open / close the notification list.
+//   Tap empty space inside an open notification: fold it back.
 //
 // All logic (alerts, IPC, network, OSD, memwatch) is unchanged.
 
@@ -45,13 +48,11 @@ PanelWindow {
     exclusiveZone: 40
     color: "transparent"
 
-    // Only the pill, the flags, the tab and the card catch clicks.
+    // Only the pill (it IS the notification now) and the wifi tab catch clicks.
     mask: Region {
         item: island
         regions: [
-            Region { item: flagsRow },
-            Region { item: toast },
-            Region { item: panel }
+            Region { item: toast }
         ]
     }
 
@@ -67,7 +68,6 @@ PanelWindow {
     readonly property int swapMs: 6000
     readonly property int osdMs: 1500
     readonly property int netMs: 3500
-    readonly property int maxFlags: 8
     readonly property real osdSize: 68          // the square for volume / brightness
     readonly property bool osdMorph: osdShown && !panelOpen
     property bool chargeSpace: false            // step 1: make room for the label
@@ -101,24 +101,22 @@ PanelWindow {
         onTriggered: win.clockMode = 0
     }
 
-    // Flag colour: one stable hue per app, red for critical.
-    function flagColor(n) {
-        if (n && n.urgency === NotificationUrgency.Critical) return Theme.bad
-        const s = (n && n.appName) ? n.appName : "?"
-        let h = 0
-        for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360
-        return Qt.hsla(h / 360, 0.55, 0.62, 1)
-    }
-
     // --- Notification state ---------------------------------------------------
     property var popup: null               // newest notification
     property bool popupShown: false
-    property var openNotif: null           // notification unfolded by tapping its flag
-    property bool listOpen: false          // full list (IPC)
+    property var openNotif: null           // notification opened explicitly
+    property bool listOpen: false          // full list (bell / IPC)
     readonly property var cardNotif: listOpen ? null
                                    : (openNotif !== null ? openNotif : (popupShown ? popup : null))
     readonly property bool panelOpen: listOpen || cardNotif !== null
     readonly property int notifCount: server.trackedNotifications.values.length
+
+    // Size the pill grows to when a notification (or the list) is open.
+    // Width is fixed; height follows the content, so the pill hugs it.
+    readonly property real contentW: notifWidth + 24
+    readonly property real cardH: popupCard.implicitHeight + 20
+    readonly property real listH: 44 + (notifCount > 0 ? Math.min(300, notifList.contentHeight) : 28) + 12
+    readonly property real panelH: listOpen ? listH : cardH
 
     function closeAll() {
         listOpen = false
@@ -366,86 +364,40 @@ PanelWindow {
 
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
-    // ══ FLAGS ═════════════════════════════════════════════════════════════
-    // Declared before the pill so the pill draws over their top edge: they
-    // look like they hang out from behind it.
-    Row {
-        id: flagsRow
-        opacity: win.osdMorph ? 0 : 1
-        Behavior on opacity { NumberAnimation { duration: 150 } }
-        anchors.top: island.bottom
-        anchors.topMargin: -6
-        anchors.left: island.left
-        anchors.leftMargin: 22
-        spacing: 4
-
-        Repeater {
-            model: server.trackedNotifications
-            delegate: Item {
-                id: flag
-                required property int index
-                required property var modelData
-                readonly property bool opened: win.cardNotif === modelData
-                visible: index < win.maxFlags
-                width: visible ? 16 : 0
-                height: 16
-
-                Rectangle {
-                    id: tab
-                    width: 14; height: 16; radius: 3
-                    x: 1
-                    y: flag.opened ? 3 : 0
-                    color: win.flagColor(flag.modelData)
-                    border.width: 1
-                    border.color: Qt.rgba(0, 0, 0, 0.25)
-                    rotation: flag.index % 2 === 0 ? -6 : 5
-                    transformOrigin: Item.Top
-                    scale: 0
-                    Component.onCompleted: scale = 1
-                    Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
-                    Behavior on y { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        const same = win.openNotif === flag.modelData
-                        win.closeAll()
-                        if (!same) win.openNotif = flag.modelData
-                    }
-                }
-            }
-        }
-        Text {
-            visible: win.notifCount > win.maxFlags
-            anchors.verticalCenter: undefined
-            y: 4
-            font.family: win.font; font.pixelSize: 10
-            color: Theme.fgDim
-            text: "+" + (win.notifCount - win.maxFlags)
-        }
-    }
-
     // ══ THE PILL ══════════════════════════════════════════════════════════
+    // Three sizes: the slim pill, the OSD square (volume / brightness) and the
+    // notification size (the content's own width and height).
     Rectangle {
         id: island
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
-        height: win.osdMorph ? win.osdSize : win.pillH
+        height: win.osdMorph ? win.osdSize
+              : (win.panelOpen ? win.panelH : win.pillH)
         radius: Math.min(height / 2, 22)
         color: Theme.panel
         clip: true
         Behavior on height { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
 
         readonly property real rowW: 2 * win.pad
-             + wifiSec.target + chargeSec.target + clockSec.target + musicSec.target + winSec.target
-        width: win.osdMorph ? win.osdSize : rowW
+             + wifiSec.target + chargeSec.target + clockSec.target + bellSec.target
+             + musicSec.target + winSec.target
+        width: win.osdMorph ? win.osdSize
+             : (win.panelOpen ? win.contentW : rowW)
         Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
 
-        // Tapping the empty part of the pill folds any open card.
+        // Tapping empty space folds any open card / list.
+        // (Sits underneath everything, so buttons inside the card still work.)
         MouseArea {
             anchors.fill: parent
             onClicked: if (win.panelOpen) win.closeAll()
+        }
+
+        // Hovering an open card pauses its auto-fold.
+        HoverHandler {
+            onHoveredChanged: {
+                if (hovered) popupTimer.stop()
+                else if (win.popupShown) popupTimer.restart()
+            }
         }
 
         // ── Contour: the outline is a gauge ──
@@ -489,7 +441,7 @@ PanelWindow {
                 fillColor: "transparent"
                 strokeColor: Qt.rgba(1, 1, 1, 0.12)
                 strokeWidth: contour.sw
-                            startX: island.width / 2; startY: contour.inset
+                startX: island.width / 2; startY: contour.inset
                 PathLine { x: island.width - contour.cr; y: contour.inset }
                 PathArc { x: island.width - contour.inset; y: contour.cr
                           radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
@@ -513,7 +465,7 @@ PanelWindow {
                 capStyle: win.osdMorph ? ShapePath.FlatCap : ShapePath.RoundCap
                 strokeStyle: ShapePath.DashLine
                 dashPattern: [Math.max(0.01, contour.perim * contour.gauge / contour.sw), contour.perim]
-                            startX: island.width / 2; startY: contour.inset
+                startX: island.width / 2; startY: contour.inset
                 PathLine { x: island.width - contour.cr; y: contour.inset }
                 PathArc { x: island.width - contour.inset; y: contour.cr
                           radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
@@ -538,7 +490,7 @@ PanelWindow {
                 strokeStyle: ShapePath.DashLine
                 dashPattern: [16 / contour.sw, Math.max(1, contour.perim / contour.sw - 16 / contour.sw)]
                 dashOffset: contour.perim / contour.sw * (1 - contour.cometPos)
-                            startX: island.width / 2; startY: contour.inset
+                startX: island.width / 2; startY: contour.inset
                 PathLine { x: island.width - contour.cr; y: contour.inset }
                 PathArc { x: island.width - contour.inset; y: contour.cr
                           radiusX: contour.rc; radiusY: contour.rc; direction: PathArc.Clockwise }
@@ -572,12 +524,110 @@ PanelWindow {
             Behavior on opacity { NumberAnimation { duration: 200 } }
         }
 
+        // ── Notification content: one card, or the full list ──
+        // Fixed size and centred, so it doesn't reflow while the pill grows
+        // or shrinks around it (the pill's clip just reveals / hides it).
+        Item {
+            id: panelContent
+            width: win.contentW
+            height: win.panelH
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            opacity: win.panelOpen ? 1 : 0
+            visible: opacity > 0.01
+            enabled: win.panelOpen
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+
+            IslandNotif {
+                id: popupCard
+                visible: !win.listOpen && win.cardNotif !== null
+                x: 12; y: 10
+                width: parent.width - 24
+                notif: win.cardNotif
+            }
+
+            Item {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                visible: win.listOpen
+
+                Item {
+                    id: listHead
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: 34
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Notifications"
+                        color: Theme.accentHi
+                        font.family: win.font
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: win.notifCount > 0
+                        text: "Clear all"
+                        color: clearArea.containsMouse ? Theme.accentHi : Theme.fgDim
+                        font.family: win.font
+                        font.pixelSize: 11
+                        MouseArea {
+                            id: clearArea
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                const all = server.trackedNotifications.values.slice()
+                                all.forEach(n => n.dismiss())
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    anchors.top: listHead.bottom
+                    anchors.topMargin: 4
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: win.notifCount === 0
+                    text: "You're all caught up"
+                    color: Theme.fgDim
+                    font.family: win.font
+                    font.pixelSize: 11
+                }
+
+                ListView {
+                    id: notifList
+                    anchors.top: listHead.bottom
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 8
+                    clip: true
+                    spacing: 8
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: server.trackedNotifications
+                    delegate: IslandNotif {
+                        required property var modelData
+                        width: notifList.width
+                        notif: modelData
+                    }
+                }
+            }
+        }
+
+        // ── The normal pill contents (hidden while the pill is a square / card) ──
         Row {
             x: win.pad
             height: island.height
             spacing: 0
-            opacity: win.osdMorph ? 0 : 1
-            enabled: !win.osdMorph
+            opacity: (win.osdMorph || win.panelOpen) ? 0 : 1
+            enabled: !win.osdMorph && !win.panelOpen
             Behavior on opacity { NumberAnimation { duration: 150 } }
 
             // 1. NETWORK: one dot. Dim = online, pulsing red = offline.
@@ -643,6 +693,78 @@ PanelWindow {
                         anchors.margins: -4
                         cursorShape: Qt.PointingHandCursor
                         onClicked: { win.clockMode = (win.clockMode + 1) % 3; swapTimer.restart() }
+                    }
+                }
+            }
+
+            // 2b. BELL: notification count. Tap opens the list. Rings on a new one.
+            // (Want it hidden when there are no notifications? Change `target`
+            //  to:  win.notifCount > 0 ? win.gap + bellBox.width : 0
+            //  and add `clip: true` to this Item.)
+            Item {
+                id: bellSec
+                readonly property real target: win.gap + bellBox.width
+                width: target; height: island.height
+
+                property int prevCount: 0
+                readonly property int n: win.notifCount
+                onNChanged: {
+                    if (n > prevCount) ring.restart()
+                    prevCount = n
+                }
+
+                Item {
+                    id: bellBox
+                    x: win.gap
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 24; height: 20
+
+                    Text {
+                        id: bellIcon
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        font.family: win.font; font.pixelSize: 14
+                        text: "\uf0f3"
+                        color: win.notifCount > 0 ? Theme.fg : Theme.fgDim
+                        transformOrigin: Item.Top
+                        Behavior on color { ColorAnimation { duration: 200 } }
+
+                        SequentialAnimation {
+                            id: ring
+                            NumberAnimation { target: bellIcon; property: "rotation"; to: 18;  duration: 80;  easing.type: Easing.OutQuad }
+                            NumberAnimation { target: bellIcon; property: "rotation"; to: -16; duration: 120; easing.type: Easing.InOutQuad }
+                            NumberAnimation { target: bellIcon; property: "rotation"; to: 10;  duration: 120; easing.type: Easing.InOutQuad }
+                            NumberAnimation { target: bellIcon; property: "rotation"; to: -6;  duration: 100; easing.type: Easing.InOutQuad }
+                            NumberAnimation { target: bellIcon; property: "rotation"; to: 0;   duration: 100; easing.type: Easing.OutQuad }
+                        }
+                    }
+
+                    // count badge
+                    Rectangle {
+                        id: badge
+                        x: 9; y: 0
+                        height: 12
+                        width: Math.max(12, badgeText.implicitWidth + 6)
+                        radius: 6
+                        color: Theme.accent
+                        visible: win.notifCount > 0
+                        scale: win.notifCount > 0 ? 1 : 0
+                        Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
+
+                        Text {
+                            id: badgeText
+                            anchors.centerIn: parent
+                            font.family: win.font; font.pixelSize: 8; font.weight: Font.Bold
+                            color: Theme.accentText
+                            text: win.notifCount > 9 ? "9+" : win.notifCount
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: win.toggleList()
                     }
                 }
             }
@@ -718,6 +840,7 @@ PanelWindow {
                         }
                         SequentialAnimation {
                             running: titleBox.overflow > 0 && musicSec.revealed && !win.osdMorph
+                                     && !win.panelOpen
                                      && win.player !== null && win.player.isPlaying
                             loops: Animation.Infinite
                             onRunningChanged: if (!running) titleText.x = 0
@@ -844,118 +967,6 @@ PanelWindow {
                 font.family: win.font; font.pixelSize: 11
                 color: Theme.fgDim
                 text: win.netSsid !== "" ? win.netSsid : win.netIface
-            }
-        }
-    }
-
-    // ══ CARD PANEL: one unfolded notification, or the full list ═══════════
-    Rectangle {
-        id: panel
-        anchors.top: island.bottom
-        anchors.topMargin: 16
-        anchors.horizontalCenter: island.horizontalCenter
-        width: win.notifWidth + 24
-        radius: 20
-        color: Theme.panel
-        border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.12)
-        clip: true
-
-        readonly property real cardH: popupCard.implicitHeight + 20
-        readonly property real listH: 44 + (win.notifCount > 0 ? Math.min(300, notifList.contentHeight) : 28) + 12
-        height: win.panelOpen ? (win.listOpen ? listH : cardH) : 0
-        opacity: win.panelOpen ? 1 : 0
-        visible: height > 0.5
-        Behavior on height { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
-        Behavior on opacity { NumberAnimation { duration: 200 } }
-
-        // Hovering a card pauses its auto-fold.
-        HoverHandler {
-            onHoveredChanged: {
-                if (hovered) popupTimer.stop()
-                else if (win.popupShown) popupTimer.restart()
-            }
-        }
-
-        IslandNotif {
-            id: popupCard
-            visible: !win.listOpen && win.cardNotif !== null
-            x: 12; y: 10
-            width: parent.width - 24
-            notif: win.cardNotif
-        }
-
-        Item {
-            anchors.fill: parent
-            anchors.leftMargin: 12
-            anchors.rightMargin: 12
-            visible: win.listOpen
-
-            Item {
-                id: listHead
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: 34
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Notifications"
-                    color: Theme.accentHi
-                    font.family: win.font
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: win.notifCount > 0
-                    text: "Clear all"
-                    color: clearArea.containsMouse ? Theme.accentHi : Theme.fgDim
-                    font.family: win.font
-                    font.pixelSize: 11
-                    MouseArea {
-                        id: clearArea
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            const all = server.trackedNotifications.values.slice()
-                            all.forEach(n => n.dismiss())
-                        }
-                    }
-                }
-            }
-
-            Text {
-                anchors.top: listHead.bottom
-                anchors.topMargin: 4
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: win.notifCount === 0
-                text: "You're all caught up"
-                color: Theme.fgDim
-                font.family: win.font
-                font.pixelSize: 11
-            }
-
-            ListView {
-                id: notifList
-                anchors.top: listHead.bottom
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 8
-                clip: true
-                spacing: 8
-                boundsBehavior: Flickable.StopAtBounds
-                model: server.trackedNotifications
-                delegate: IslandNotif {
-                    required property var modelData
-                    width: notifList.width
-                    notif: modelData
-                }
             }
         }
     }
