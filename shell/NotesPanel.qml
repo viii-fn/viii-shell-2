@@ -16,7 +16,7 @@ Scope {
     readonly property int closeMs: 0
     readonly property string mono: "JetBrainsMono Nerd Font"
 
-    property string dir: Quickshell.env("HOME") + "/Notes"
+    property string dir: Quickshell.env("HOME") + "/Documents/Notes"
     property var allNotes: []
     property string curPath: ""
     property bool dirty: false

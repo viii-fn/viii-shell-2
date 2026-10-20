@@ -11,9 +11,13 @@
 //     the exact width and height of the content (just like volume / brightness
 //     grow into a square). A new notification unfolds itself briefly, then the
 //     pill shrinks back. Tap the bell to open the full list the same way.
+//   - Workspaces (Hyprland): switching workspace morphs the pill into a row of
+//     workspace chips (number + the app icons living on it). The active one is
+//     highlighted. Click a chip to jump to that workspace.
 //   - Wifi changes show as one small tilted tab under the pill.
 //
 //   qs ipc call island notifications      toggle the full list
+//   qs ipc call island workspaces         show the workspace card (test)
 //   Volume / brightness: the pill shrinks into a square, the icon sits in the
 //   middle and the outline thickens to show the level.
 //   The outline thickens and pulses twice whenever the battery % changes.
@@ -27,6 +31,7 @@
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import Quickshell.Services.Mpris
 import Quickshell.Services.UPower
 import Quickshell.Services.Pipewire
@@ -68,8 +73,11 @@ PanelWindow {
     readonly property int swapMs: 6000
     readonly property int osdMs: 1500
     readonly property int netMs: 3500
+    readonly property int wsMs: 1600            // how long the workspace card stays open
+    readonly property real wsH: 56              // height of the workspace card
     readonly property real osdSize: 68          // the square for volume / brightness
     readonly property bool osdMorph: osdShown && !panelOpen
+    readonly property bool wsMorph: wsShown && !panelOpen && !osdMorph
     property bool chargeSpace: false            // step 1: make room for the label
     property bool chargeShown: false            // step 2: fade the label in
     property bool cometOn: false                // the light circling the pill
@@ -161,6 +169,54 @@ PanelWindow {
         target: "island"
         function notifications(): void { win.toggleList() }
         function pulse(): void { contour.pulseNow() }     // manual test: qs ipc call island pulse
+        function workspaces(): void { win.showWs() }      // manual test: qs ipc call island workspaces
+    }
+
+    // ── Workspaces (Hyprland) ──────────────────────────────────────────────
+    property bool wsShown: false
+    property int lastWsId: -1
+
+    // Sorted list of workspace ids that exist (special workspaces, id < 0, are skipped).
+    // The focused one is always included, even if Hyprland hasn't listed it yet.
+    readonly property var wsIds: {
+        const ids = []
+        const vals = Hyprland.workspaces.values
+        for (let i = 0; i < vals.length; i++) {
+            if (vals[i].id > 0) ids.push(vals[i].id)
+        }
+        const f = Hyprland.focusedWorkspace
+        if (f && f.id > 0 && ids.indexOf(f.id) < 0) ids.push(f.id)
+        ids.sort((a, b) => a - b)
+        return ids
+    }
+
+    // Width of the pill when it is the workspace card (the chips' own width + padding)
+    readonly property real wsW: wsRow.implicitWidth + 24
+
+    function showWs() {
+        osdShown = false
+        osdTimer.stop()
+        netShown = false
+        netTimer.stop()
+        wsShown = true
+        wsTimer.restart()
+    }
+
+    function wsEvent() {
+        const f = Hyprland.focusedWorkspace
+        if (!f) return
+        const first = lastWsId === -1
+        const changed = f.id !== lastWsId
+        lastWsId = f.id
+        if (first || !changed) return      // ignore the initial value at startup
+        showWs()
+    }
+
+    Timer { id: wsTimer; interval: win.wsMs; onTriggered: win.wsShown = false }
+
+    Connections {
+        target: Hyprland
+        function onFocusedWorkspaceChanged() { win.wsEvent() }
     }
 
     // ── OSD: volume + brightness ───────────────────────────────────────────
@@ -175,6 +231,8 @@ PanelWindow {
         osdMuted = muted
         netShown = false
         netTimer.stop()
+        wsShown = false
+        wsTimer.stop()
         osdShown = true
         osdTimer.restart()
     }
@@ -365,14 +423,15 @@ PanelWindow {
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
     // ══ THE PILL ══════════════════════════════════════════════════════════
-    // Three sizes: the slim pill, the OSD square (volume / brightness) and the
-    // notification size (the content's own width and height).
+    // Four sizes: the slim pill, the OSD square (volume / brightness), the
+    // workspace card and the notification size (the content's own size).
     Rectangle {
         id: island
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
         height: win.osdMorph ? win.osdSize
-              : (win.panelOpen ? win.panelH : win.pillH)
+              : (win.panelOpen ? win.panelH
+              : (win.wsMorph ? win.wsH : win.pillH))
         radius: Math.min(height / 2, 22)
         color: Theme.panel
         clip: true
@@ -382,21 +441,30 @@ PanelWindow {
              + wifiSec.target + chargeSec.target + clockSec.target + bellSec.target
              + musicSec.target + winSec.target
         width: win.osdMorph ? win.osdSize
-             : (win.panelOpen ? win.contentW : rowW)
+             : (win.panelOpen ? win.contentW
+             : (win.wsMorph ? win.wsW : rowW))
         Behavior on width { NumberAnimation { duration: win.animMs; easing.type: Easing.OutCubic } }
 
         // Tapping empty space folds any open card / list.
         // (Sits underneath everything, so buttons inside the card still work.)
         MouseArea {
             anchors.fill: parent
-            onClicked: if (win.panelOpen) win.closeAll()
+            onClicked: {
+                if (win.panelOpen) win.closeAll()
+                else if (win.wsShown) { win.wsShown = false; wsTimer.stop() }
+            }
         }
 
         // Hovering an open card pauses its auto-fold.
         HoverHandler {
             onHoveredChanged: {
-                if (hovered) popupTimer.stop()
-                else if (win.popupShown) popupTimer.restart()
+                if (hovered) {
+                    popupTimer.stop()
+                    wsTimer.stop()
+                } else {
+                    if (win.popupShown) popupTimer.restart()
+                    if (win.wsShown) wsTimer.restart()
+                }
             }
         }
 
@@ -524,6 +592,95 @@ PanelWindow {
             Behavior on opacity { NumberAnimation { duration: 200 } }
         }
 
+        // ── Workspace card: one chip per workspace (number + its app icons) ──
+        // Fixed size and centred, so it doesn't reflow while the pill grows
+        // or shrinks around it (the pill's clip just reveals / hides it).
+        Item {
+            id: wsContent
+            width: win.wsW
+            height: win.wsH
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            opacity: win.wsMorph ? 1 : 0
+            visible: opacity > 0.01
+            enabled: win.wsMorph
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+
+            Row {
+                id: wsRow
+                anchors.centerIn: parent
+                spacing: 6
+
+                Repeater {
+                    model: win.wsIds
+
+                    delegate: Rectangle {
+                        id: chip
+                        required property var modelData          // the workspace id (a number)
+
+                        readonly property bool active: Hyprland.focusedWorkspace !== null
+                                                       && Hyprland.focusedWorkspace.id === modelData
+
+                        // The windows living on this workspace (max 3 icons shown)
+                        readonly property var apps: {
+                            const out = []
+                            const v = Hyprland.toplevels.values
+                            for (let i = 0; i < v.length; i++) {
+                                if (v[i].workspace && v[i].workspace.id === modelData) out.push(v[i])
+                            }
+                            return out.slice(0, 3)
+                        }
+
+                        height: 36
+                        width: chipRow.implicitWidth + 22
+                        radius: 12
+                        color: active ? Qt.alpha(Theme.accent, 0.14) : "transparent"
+                        border.width: 1
+                        border.color: active ? Theme.accent : Qt.rgba(1, 1, 1, 0.08)
+                        Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on color { ColorAnimation { duration: 200 } }
+                        Behavior on border.color { ColorAnimation { duration: 200 } }
+
+                        Row {
+                            id: chipRow
+                            anchors.centerIn: parent
+                            spacing: 6
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.family: win.font; font.pixelSize: 13; font.weight: Font.DemiBold
+                                color: chip.active ? Theme.accentHi : Theme.fgDim
+                                text: chip.modelData
+                                Behavior on color { ColorAnimation { duration: 200 } }
+                            }
+
+                            Repeater {
+                                model: chip.apps
+                                delegate: Image {
+                                    required property var modelData   // a HyprlandToplevel
+                                    readonly property string appId: modelData.wayland
+                                        ? modelData.wayland.appId
+                                        : (modelData.lastIpcObject.class || "")
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 16; height: 16
+                                    sourceSize: Qt.size(32, 32)
+                                    opacity: chip.active ? 1 : 0.55
+                                    source: Quickshell.iconPath(appId, "application-x-executable")
+                                }
+                            }
+                        }
+
+                        // Click a chip to jump to that workspace
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: Hyprland.dispatch("workspace " + chip.modelData)
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Notification content: one card, or the full list ──
         // Fixed size and centred, so it doesn't reflow while the pill grows
         // or shrinks around it (the pill's clip just reveals / hides it).
@@ -626,8 +783,8 @@ PanelWindow {
             x: win.pad
             height: island.height
             spacing: 0
-            opacity: (win.osdMorph || win.panelOpen) ? 0 : 1
-            enabled: !win.osdMorph && !win.panelOpen
+            opacity: (win.osdMorph || win.panelOpen || win.wsMorph) ? 0 : 1
+            enabled: !win.osdMorph && !win.panelOpen && !win.wsMorph
             Behavior on opacity { NumberAnimation { duration: 150 } }
 
             // 1. NETWORK: one dot. Dim = online, pulsing red = offline.
@@ -840,7 +997,7 @@ PanelWindow {
                         }
                         SequentialAnimation {
                             running: titleBox.overflow > 0 && musicSec.revealed && !win.osdMorph
-                                     && !win.panelOpen
+                                     && !win.panelOpen && !win.wsMorph
                                      && win.player !== null && win.player.isPlaying
                             loops: Animation.Infinite
                             onRunningChanged: if (!running) titleText.x = 0
@@ -923,7 +1080,7 @@ PanelWindow {
     // ══ TOAST TAB: wifi stamp, tilted under the pill ═══════
     Rectangle {
         id: toast
-        readonly property bool want: win.netShown && !win.panelOpen && !win.osdMorph
+        readonly property bool want: win.netShown && !win.panelOpen && !win.osdMorph && !win.wsMorph
         anchors.top: island.bottom
         anchors.topMargin: 12
         anchors.horizontalCenter: island.horizontalCenter
